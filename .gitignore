@@ -1,0 +1,20 @@
+# data & generated outputs (not versioned)
+data/*
+!data/.gitkeep
+outputs/figures/*
+outputs/logs/*
+!outputs/**/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.ipynb_checkpoints/
+
+# os / editors
+.DS_Store
+.vscode/
+.idea/
