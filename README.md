@@ -31,8 +31,26 @@ conda activate aie1903_ad          # 课程环境
 pip install -r requirements.txt
 pip install -e .                   # 使 `import pbs` 可用
 pytest                             # smoke test
-python experiments/exp01_predictor_ade.py
+python experiments/exp00_l1_baseline.py  # 当前已完成的 P/L1 验证
 ```
+
+### P 的 L1 基线验证
+
+L1 已实现二维 CV、首次冲突 TTC、Reactive 与 Predictive assessor。P 的独立验证入口：
+
+```bash
+conda activate aie1903_ad
+python -m pytest -o cache_dir=outputs/logs/l1-baseline/.pytest_cache
+python experiments/exp00_l1_baseline.py
+```
+
+Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903_ad python ...`。
+直接调用环境内的 `python.exe` 可能缺少原生数值库所需的环境设置。
+
+验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
+产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块或
+D 的实验矩阵。CA、CTRV、Oracle 留待 L2，LR 留待 L3；原 `exp01`–`exp05` 仍待后续集成。
+测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
 
 ## 目录结构
 
@@ -66,6 +84,7 @@ data/             不入库（见「数据说明」）
 
 | 脚本 | 内容 | 报告图 |
 | --- | --- | --- |
+| `experiments/exp00_l1_baseline.py` | P 的 L1：CV ADE/FDE + Reactive/CV cut-in timeline | `l1-baseline/cv_ade_fde.png`、`l1-baseline/cut_in_timeline.png` |
 | `experiments/exp01_predictor_ade.py` | CV / CA / CTRV / LR 的 ADE/FDE vs horizon | _TBD_ |
 | `experiments/exp02_threshold_sweep.py` | 各系统碰撞率 vs 误报率 trade-off | _TBD_ |
 | `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图** | _TBD_ |
@@ -74,7 +93,10 @@ data/             不入库（见「数据说明」）
 
 ## 结果预览
 
-_待补充：四边界叠加图、trade-off 曲线、Reactive vs CV timeline。_
+L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s；
+两者均未碰撞。该样例用于方法验证，不能据此推断所有场景的安全收益。
+曲线、参数与测试记录见 [L1 验证报告](docs/l1-validation.md)。
+四边界叠加图与 trade-off 曲线留待后续 L2 集成。
 
 ## Limitations
 

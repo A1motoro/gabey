@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from pbs.prediction._motion import prediction_inputs
 from pbs.types import Scenario, Trajectory
 
 
@@ -25,4 +26,5 @@ class StaticPredictor(Predictor):
     name = "static"
 
     def predict(self, history: Trajectory, horizon: int, dt: float) -> np.ndarray:
-        return np.tile([history.x[-1], history.y[-1]], (horizon, 1)).astype(float)
+        _, xy, tau = prediction_inputs(history, horizon, dt)
+        return np.tile(xy[-1], (len(tau), 1))
