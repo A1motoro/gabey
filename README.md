@@ -7,12 +7,12 @@
 - **课程**：AIE1903 Exploration on Basic Autonomous Driving · Topic 9 — Predictive Braking Simulator (★★★)
 - **团队**（4 人）：
 
-| 代号 | 成员 | 角色 | 模块 |
-| --- | --- | --- | --- |
-| C | _TBD_ | 统筹 + 仿真与决策 | M3 `pbs.sim` |
-| P | _TBD_ | 预测 + 风险评估 | M2 `pbs.prediction`、`pbs.risk` |
-| A | _TBD_ | 场景 | M1 `pbs.data` |
-| D | _TBD_ | 评估与实验 | M4 `pbs.eval`、`pbs.systems` |
+| 代号  | 成员           | 角色         | 模块                             |
+| --- | ------------ | ---------- | ------------------------------ |
+| C   | _前背痛_        | 仿真与决策      | M3 `pbs.sim`                   |
+| P   | _华华_         | 预测 + 风险评估  | M2 `pbs.prediction`、`pbs.risk` |
+| A   | _Persistent_ | 场景         | M1 `pbs.data`                  |
+| D   | _yj_         | 评估与实验 + 统筹 | M4 `pbs.eval`、`pbs.systems`    |
 
 完整方案见 [docs/spec.md](docs/spec.md)。
 
