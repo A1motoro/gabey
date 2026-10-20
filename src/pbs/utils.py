@@ -13,9 +13,6 @@ def state_at(traj: Trajectory, t: float) -> np.ndarray:
 def history_until(traj: Trajectory, t: float) -> Trajectory:
     """Slice of traj with timestamps <= t (what is observable at time t)."""
     m = traj.t <= t + 1e-9
-    if not m.any():  # agent not yet observed: expose first sample only
-        m = np.zeros_like(traj.t, dtype=bool)
-        m[0] = True
     return Trajectory(
         t=traj.t[m],
         x=traj.x[m],

@@ -37,4 +37,12 @@ def test_skeleton_runs():
 
 
 def test_latency_arg_accepted():
-    run_sim(straight_scenario(), NullAssessor(), NeverBrakePolicy(), latency=0.3)
+    scenario = straight_scenario()
+    # Delayed observations require prehistory, not a future first sample.
+    lead = scenario.agents[0]
+    lead.t = np.concatenate([[-0.3, -0.2, -0.1], lead.t])
+    lead.x = 30 + 10 * lead.t
+    lead.y = np.zeros_like(lead.t)
+    lead.v = np.full_like(lead.t, 10.0)
+    lead.heading = np.zeros_like(lead.t)
+    run_sim(scenario, NullAssessor(), NeverBrakePolicy(), latency=0.3)

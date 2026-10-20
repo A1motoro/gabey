@@ -48,6 +48,8 @@ class SimLog:
     ttc: np.ndarray  # 每步估计的 TTC（所有 agent 取 min），无冲突为 inf
     min_dist: float
     collision: bool
+    executed_steps: int | None = None  # New logs: action[:executed_steps] was executed.
+    # None preserves legacy logs whose terminal-action convention is unspecified.
 
 
 # ---- P ↔ C contract: risk assessment -------------------------------------------------
