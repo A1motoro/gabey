@@ -4,7 +4,7 @@
 
 ## 1. 本轮范围
 
-用户确认 A/P 正式实现尚未提供，后续由 D 统一集成实验。本轮完成 C 的可调用仿真组件与接口验证，不是全组预测刹车实验。
+C 初始开发时 A/P 正式实现尚未提供。准备提交时已合并远端 P 的 L1 baseline（CV、Reactive 与 TTC）；A 场景生成仍待完成，后续由 D 统一集成实验。本轮完成 C 的可调用仿真组件与接口验证，不是全组预测刹车实验。
 
 已实现：统一 run_sim、滞回与原策略兼容、步内停车积分、输入与观测检查、步内最小距离、执行动作元数据。
 2/3 秒阈值与 6 m/s² 减速度是可配置默认值，不是最优结论；r_safe 的几何依据仍待团队确认。
@@ -18,7 +18,7 @@ from pbs.prediction.constant import ConstantVelocityPredictor
 from pbs.sim.policy import HysteresisPolicy
 from pbs.sim.simulator import run_sim, MissingObservationError
 
-# 以下需 A/P 完成对应实现，当前仓库仍有 NotImplementedError。
+# 以下仍需 A 完成 make_scenario；P 的 CV 与 PredictiveAssessor 已合入。
 scenario = make_scenario('cut_in', gap_d=30, rel_v=5, cut_in_t=2, lc_T=3)
 assessor = PredictiveAssessor(ConstantVelocityPredictor())
 policy = HysteresisPolicy(t_on=2, t_off=3, a_brake=6)
@@ -74,7 +74,7 @@ PYTHONPATH=src python examples/c_smoke.py
 CSV 增加 executed 列说明动作是否执行，原 SimLog 的字段仍保持兼容。
 该输出目录按现有 .gitignore 不入库。
 
-本轮实测：
+合并 P 更新前的 C 实测（保留原验证时间范围）：
 
 - 38 passed、6 skipped；跳过项是原有 P 预测/风险 TODO。
 - 新增/修改 Python 文件 Ruff 检查通过。
@@ -82,6 +82,8 @@ CSV 增加 executed 列说明动作是否执行，原 SimLog 的字段仍保持�
 - 覆盖解析停车距离、步内停车、多车 TTC、历史截止、初始碰撞、步内穿越、
   轨迹中间节点、路径转角、加速度扫掠收敛、滞回边界/重置、终点与旧日志兼容、非法输入。
 - 测试使用临时独立环境，未向课程环境安装 pytest；D 仍需在其环境执行集成实验。
+
+合并远端 P L1 后复查：142 passed、2 skipped、3 failed。两项延迟集成测试的场景没有提供 -0.3 秒及以前的历史，与 C 的严格缺失观测规则冲突；一项 CLI 测试因临时测试环境缺少 matplotlib 失败。以上问题待处理，不能声称合并后的完整检查已通过。
 
 ## 5. 当前 baseline：缺失观测时报错
 
@@ -122,4 +124,4 @@ D 应报告有效场景数及失败原因。无效运行不能算作零碰撞成
 - 尚未证明滞回在完整场景集中的收益；本轮证明的是实现符合规则及基础运动测试。
 - 所有对照系统使用同一积分、几何、碰撞与日志规则。
 - 本次涉及共享历史工具、SimLog 可选字段及 D 的 evaluate，PR 必须列出并请 D 审 C，A/P 确认输入条件。
-- A/P 模块未代写，本轮未 commit/push。旧 proposal 指导与讨论总结为设计历史；当前实现以本文件与 interfaces 补充为准。
+- A/P 模块未代写；已在本地创建分支并提交 C，推送与 PR 等待用户审核。旧 proposal 指导与讨论总结为设计历史；当前实现以本文件与 interfaces 补充为准。

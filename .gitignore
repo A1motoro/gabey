@@ -5,6 +5,9 @@ outputs/figures/*
 outputs/logs/*
 !outputs/**/.gitkeep
 
+# local project memory
+/memory/
+
 # python
 __pycache__/
 *.py[cod]
