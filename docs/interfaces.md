@@ -35,9 +35,11 @@ policy.decide(ttc) → brake / cruise
 
 | 模块 | 签名 | Owner | 状态 |
 | --- | --- | --- | --- |
-| M1 | `load_toy() -> list[Trajectory]` | A | TODO |
-| M1 | `make_scenario(kind, **params) -> Scenario` | A | TODO |
-| M1 | `quintic_lateral(y0, y1, T, t, t0=0) -> ndarray`；`peak_lateral_acc(dy, T)` | A | TODO / ✅ |
+| M1 | `load_toy() -> list[Trajectory]` | A | ✅ |
+| M1 | `make_scenario(kind, **params) -> Scenario` | A | ✅ |
+| M1 | `quintic_lateral(y0, y1, T, t, t0=0) -> ndarray`；`peak_lateral_acc(dy, T)` | A | ✅ |
+| M1 | `quintic_lateral_vel / quintic_lateral_acc`（同上签名）；`min_lc_duration(dy, max_lat_acc)` | A | ✅ 新增 |
+| M1 | `scenario_set(kinds, grid, max_lat_acc, strict) -> ScenarioSet`；`canonical(name) -> Scenario` | A | ✅ 新增 |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
 | M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV ✅；其余 TODO（L2/L3） |
 | Risk | `assess_risk(ego_future, agent_future, dt, r_safe) -> RiskEstimate`（纯函数） | P | ✅ L1；严格距离 `< r_safe`，第 k 行时间 `(k+1)*dt` |
@@ -48,3 +50,11 @@ policy.decide(ttc) → brake / cruise
 | M4 | `make_system(name)`；`SYSTEMS`、`CORE` | D | ✅ |
 | M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
 | M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`plot_boundaries` | D | TODO |
+
+### M1 补充约定（2026-10，A）
+
+- `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。**`run_sim(..., duration=scenario.params["duration"])`**——
+  `run_sim` 的默认值是 10 s，不传会把慢速收敛组合误判成 benign。
+- `Scenario.agents` 恒为 1 个元素（每类场景单目标）；`agent_id ∈ {"cutter", "lead", "crosser"}`。
+- `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。
+- `load_toy()` 不含 ego（`agent_id` = 文件 stem）；ego 用新增的 `load_toy_ego()`。

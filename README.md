@@ -31,7 +31,8 @@ conda activate aie1903_ad          # 课程环境
 pip install -r requirements.txt
 pip install -e .                   # 使 `import pbs` 可用
 pytest                             # smoke test
-python experiments/exp00_l1_baseline.py  # 当前已完成的 P/L1 验证
+python experiments/exp00_l1_baseline.py  # P 的 L1 验证（CV / TTC / Reactive）
+python experiments/exp00_scenarios.py    # A 的 M1 场景基线（96 个场景 + no-braking 判定）
 ```
 
 ### P 的 L1 基线验证
@@ -57,7 +58,7 @@ D 的实验矩阵。CA、CTRV、Oracle 留待 L2，LR 留待 L3；原 `exp01`–
 ```
 src/pbs/
   types.py        Trajectory / Scenario / SimLog（W4 冻结）
-  data/           M1  load_toy, make_scenario (quintic cut-in)
+  data/           M1  load_toy, make_scenario（三类参数化场景 + quintic 换道）
   prediction/     M2  CV / CA / CTRV / LR / Oracle predictors
   risk/           TTC: assess_risk, Reactive / Predictive assessors
   sim/            M3  run_sim, ego rollout, footprint, policy, latency
@@ -65,7 +66,7 @@ src/pbs/
   systems.py      被比较的 AEB 系统注册表
 experiments/      一个实验一个脚本，产出 outputs/figures/
 tests/            pytest
-docs/             interfaces / ai_disclosure / contributions
+docs/             interfaces / scenarios / ai_disclosure / contributions
 data/             不入库（见「数据说明」）
 ```
 
@@ -85,6 +86,7 @@ data/             不入库（见「数据说明」）
 | 脚本 | 内容 | 报告图 |
 | --- | --- | --- |
 | `experiments/exp00_l1_baseline.py` | P 的 L1：CV ADE/FDE + Reactive/CV cut-in timeline | `l1-baseline/cv_ade_fde.png`、`l1-baseline/cut_in_timeline.png` |
+| `experiments/exp00_scenarios.py` | **M1 场景基线**：三类场景的几何、quintic 横向加速度过滤、96 场景 danger map | `outputs/figures/exp00_*.png` |
 | `experiments/exp01_predictor_ade.py` | CV / CA / CTRV / LR 的 ADE/FDE vs horizon | _TBD_ |
 | `experiments/exp02_threshold_sweep.py` | 各系统碰撞率 vs 误报率 trade-off | _TBD_ |
 | `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图** | _TBD_ |
@@ -93,10 +95,19 @@ data/             不入库（见「数据说明」）
 
 ## 结果预览
 
-L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s；
+P 的 L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s；
 两者均未碰撞。该样例用于方法验证，不能据此推断所有场景的安全收益。
 曲线、参数与测试记录见 [L1 验证报告](docs/l1-validation.md)。
-四边界叠加图与 trade-off 曲线留待后续 L2 集成。
+
+A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`outputs/figures/` 下得到三张图：
+
+| 文件 | 内容 |
+| --- | --- |
+| `exp00_scenario_geometry.png` | 三类冲突各一个 dangerous 样本（含不刹车时的接触点） |
+| `exp00_lateral_accel.png` | quintic 的 y/ẏ/ÿ + 横向加速度过滤（最短换道时长 2.60 s） |
+| `exp00_danger_map.png` | 96 个场景的 no-braking danger map（四边界图的底板） |
+
+_待补充：四边界叠加图（exp03）、trade-off 曲线（exp02）、Reactive vs CV 全量 timeline（exp05）。_
 
 ## Limitations
 
@@ -118,4 +129,5 @@ L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹
 `data/` 不入库。
 
 - **Toy 数据**：从课程仓库 `AIE1903_AD/data/sample_trajectories/` 复制到本仓库 `data/sample_trajectories/`。
+  （若直接放在 `data/` 根下也能读：`load_toy()` 会回退并在 stderr 提示。）
 - **nuScenes mini**（可选，L3）：自行下载；所有结论须在合成场景上独立成立。
