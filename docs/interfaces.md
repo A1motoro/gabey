@@ -48,3 +48,23 @@ policy.decide(ttc) → brake / cruise
 | M4 | `make_system(name)`；`SYSTEMS`、`CORE` | D | ✅ |
 | M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
 | M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`plot_boundaries` | D | TODO |
+
+## C 第一版实现补充（2026-10-20）
+
+本节为 C 本次兼容扩展与集成说明；上表保留原骨架记录，不表示 A/P TODO 已完成。
+详见 [C baseline 接入与降级策略](C_baseline.md)。提交 PR 时请提示 A/P/D 审阅以下行为。
+
+- 新增 `HysteresisPolicy(t_on=2, t_off=3, a_brake=6)`，支持 `decide(ttc)` 与 `reset()`。
+  run_sim 对提供 reset 的策略每次重置；原单阈值和 NeverBrake 保持可用。
+- run_sim 原参数顺序不变，末尾追加 `collision_dt=0.01` 秒：步内线性扫掠的最大子步，
+  加速度运动仍有近似，按实验需要验证收敛。
+- SimLog 末尾追加可选字段 `executed_steps: int | None = None`。
+  新日志 K+1 行状态，仅前 K 个动作执行。最后一行 action 保持上一步值，ego_a=0，
+  ttc 记录终点评估，不调用策略或额外移动。evaluate 已兼容；旧日志为 None 时保持旧统计。
+- ego_a 是步开始的控制加速度，不是整步平均加速度；步内停车后保持静止。
+- 校验时间步长、轨迹格式、唯一 ID、真值覆盖、自车起点与路径方向，路径需覆盖实际运动及 rollout。
+- history_until 在没有历史时返回空 Trajectory，不再补未来首帧。
+  run_sim 抛出 MissingObservationError（ValueError 子类），不输出正常安全日志。
+- A 需提供延迟所需预历史；P 定义其最小历史长度，并将预测对齐到 ctx.t_now+(k+1)*dt。
+  原 Predictor 接口以最后观测为基准，非零延迟的时间对齐仍由 P 完成。
+- 记录碰撞后继续到指定时长，collision 永久保留 True；不模拟碰撞冲击。

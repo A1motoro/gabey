@@ -17,7 +17,11 @@ def fde(pred: np.ndarray, gt: np.ndarray) -> float:
 
 def evaluate(log: SimLog, benign: bool) -> dict:
     """benign: from pbs.eval.counterfactual.is_benign(scenario), computed once per scenario."""
-    onset = next((ti for ti, a in zip(log.t, log.action, strict=True) if a == "brake"), None)
+    end = log.executed_steps if log.executed_steps is not None else len(log.t)
+    onset = next(
+        (ti for ti, a in zip(log.t[:end], log.action[:end], strict=True) if a == "brake"),
+        None,
+    )
     braked = onset is not None
     return {
         "collision": log.collision,
