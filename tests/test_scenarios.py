@@ -8,9 +8,9 @@ from pbs.sim.simulator import run_sim
 from pbs.types import Scenario, SimLog, Trajectory
 
 
-def straight_scenario(lead_v: float = 10.0) -> Scenario:
+def straight_scenario(lead_v: float = 10.0, prehistory: float = 0.0) -> Scenario:
     """Lead vehicle 30 m ahead in the ego lane; ego at 15 m/s."""
-    t = np.arange(0, 10.01, 0.1)
+    t = np.arange(-round(prehistory / 0.1), 101) * 0.1
     lead = Trajectory(
         t,
         30 + lead_v * t,
@@ -37,12 +37,5 @@ def test_skeleton_runs():
 
 
 def test_latency_arg_accepted():
-    scenario = straight_scenario()
-    # Delayed observations require prehistory, not a future first sample.
-    lead = scenario.agents[0]
-    lead.t = np.concatenate([[-0.3, -0.2, -0.1], lead.t])
-    lead.x = 30 + 10 * lead.t
-    lead.y = np.zeros_like(lead.t)
-    lead.v = np.full_like(lead.t, 10.0)
-    lead.heading = np.zeros_like(lead.t)
+    scenario = straight_scenario(prehistory=0.3)
     run_sim(scenario, NullAssessor(), NeverBrakePolicy(), latency=0.3)

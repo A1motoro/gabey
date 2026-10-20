@@ -59,7 +59,9 @@ def test_l1_repeated_run_is_deterministic_and_does_not_change_scenario(system):
 
 @pytest.mark.parametrize("system", ["reactive", "cv"])
 def test_l1_delayed_straight_history_remains_safe(system):
-    log = run_sim(straight_scenario(), make_system(system), TTCThresholdPolicy(), latency=0.3)
+    log = run_sim(
+        straight_scenario(prehistory=0.3), make_system(system), TTCThresholdPolicy(), latency=0.3
+    )
     assert not log.collision
     assert "brake" in log.action
     assert not np.isnan(log.ttc).any()
