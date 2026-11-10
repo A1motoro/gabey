@@ -72,6 +72,17 @@ data/             不入库（见「数据说明」）
 
 数据流：`M1 scenario → M2 prediction → risk (TTC) → M3 sim/decision → M4 evaluation`
 
+## 2.5D Cut-in 演示
+
+```bash
+python examples/cut_in_demo.py
+```
+
+在本地浏览器同步对比 Reactive 与 Predictive · CV，支持播放、逐帧、参数调整及结果摘要。
+原版入口 `/`；投屏增强版 `/presentation` 增加车间虚线/TTC、关键事件跳转和自动暂停。
+无需真实数据或前端构建工具。运行、测试、演示步骤以及真实数据/噪声扩展接口见
+[Demo 使用说明](docs/cut_in_demo.md)。
+
 ## 核心概念
 
 - **TTC (time-to-collision)**：在预测时域内，ego 与 agent 距离首次小于 `r_safe` 的时间；无冲突为 `inf`。

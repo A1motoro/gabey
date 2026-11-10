@@ -50,6 +50,7 @@ class SimLog:
     collision: bool
     executed_steps: int | None = None  # New logs: action[:executed_steps] was executed.
     # None preserves legacy logs whose terminal-action convention is unspecified.
+    first_collision_t: float | None = None  # First contact under the swept linear approximation.
 
 
 # ---- P ↔ C contract: risk assessment -------------------------------------------------

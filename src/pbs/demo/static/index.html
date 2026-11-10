@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cut-in / Predictive Braking</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<main>
+<header><div><h1>See the cut-in. <span>Compare the response.</span></h1><p>Predictive Braking Simulator <span class="separator">/</span> AIE1903 <a class="version-link" href="/presentation">Presentation view</a></p></div><div class="header-note"><span class="live-dot"></span> CLOSED-LOOP EGO<br><small>Same scene. Two decisions.</small></div></header>
+<section class="workspace" aria-label="Simulation comparison">
+<div class="scene-bar"><div><strong id="scene-name">Standard cut-in</strong><span id="phase">Ready to simulate</span></div><label class="toggle"><input id="prediction" type="checkbox" checked> Show prediction</label></div>
+<div class="views">
+<article class="view" id="reactive-view"><div class="view-heading"><div><h2 id="reactive-title">Reactive</h2><p id="reactive-status">First brake: — · panel t = 0.00 s</p></div><span class="action" id="reactive-action">CRUISE</span></div><canvas id="reactive-road" role="img" aria-label="Reactive vehicle and cut-in road animation"></canvas><div class="metrics" id="reactive-metrics"></div></article>
+<article class="view" id="cv-view"><div class="view-heading"><div><h2 id="cv-title">Predictive · CV</h2><p id="cv-status">First brake: — · panel t = 0.00 s</p></div><span class="action" id="cv-action">CRUISE</span></div><canvas id="cv-road" role="img" aria-label="Predictive CV vehicle and cut-in road animation"></canvas><div class="metrics" id="cv-metrics"></div></article>
+</div>
+<div class="legend"><span><i class="swatch ego"></i>Ego</span><span><i class="swatch cutter"></i>Cut-in agent</span><span><i class="line-swatch"></i>Prediction · next 3 s</span><span class="legend-note">TTC — : no conflict within forecast horizon</span></div>
+<div class="playback"><div class="buttons"><button id="play" class="primary" disabled>Play</button><button id="replay" disabled>Replay</button><button id="step" disabled>Step +0.1 s</button></div><label class="scrubber"><span class="sr-only">Simulation time</span><input id="timeline" type="range" min="0" max="10" step="0.01" value="0" disabled></label><output id="clock">0.00 / 10.0 s</output><label class="speed"><span class="sr-only">Playback speed</span><select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label></div>
+</section>
+<section class="lower">
+<div class="analysis"><div class="section-heading"><h2>Response over time</h2><div class="chart-legend"><span class="reactive-key" id="reactive-legend">Reactive</span><span class="cv-key" id="cv-legend">Predictive · CV</span></div></div><canvas id="chart" role="img" aria-label="Ego speed in metres per second over simulation time"></canvas><div id="summary" class="summary" aria-live="polite">Play to the end to compare braking onset and clearance.</div></div>
+<form id="parameters"><div class="section-heading"><h2>Scenario controls</h2><span id="dirty" hidden>Unapplied changes</span></div><label class="preset">Preset<select id="preset"><option value="standard">Standard cut-in</option><option value="faster">Faster cutter · benign</option></select></label><div id="fields"></div><p id="scenario-explanation" class="scenario-explanation"></p><p class="apply-note">After changing parameters, click <strong>Run simulation</strong> to apply them.</p><div class="form-footer"><button class="primary" id="run" type="submit">Run simulation</button><span>Hysteresis: brake &lt; 2 s · release &gt; 3 s<br>Equality holds state · 6 m/s² braking</span></div><p id="error" role="alert" hidden></p></form>
+</section>
+<footer><p id="source-note">Synthetic scenario · agent trajectory replay · closed-loop ego braking</p><p>2.5D illustration · 0.1 s decisions, interpolated motion · simplified collision geometry</p></footer>
+</main><script src="/app.js" defer></script>
+</body></html>

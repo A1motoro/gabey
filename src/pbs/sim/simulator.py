@@ -8,8 +8,10 @@ Ego is simulated (reacts to braking); agents are log-replayed (do not react).
 import numpy as np
 
 from pbs.risk.assessors import RiskAssessor
-from pbs.sim.collision import R_SAFE, in_collision, swept_min_distance
+from pbs.sim.collision import R_SAFE, in_collision, swept_contact_fraction, swept_min_distance
+from pbs.sim.observation import ObservationModel
 from pbs.sim.policy import BRAKE, CRUISE
+from pbs.sim.timing import ComputationDelayModel
 from pbs.types import RiskContext, Scenario, SimLog
 from pbs.utils import history_until, path_heading, path_point, state_at
 
@@ -96,6 +98,9 @@ def run_sim(
     r_safe: float = R_SAFE,
     latency: float = 0.0,
     collision_dt: float = 0.01,
+    *,
+    observation_model: ObservationModel | None = None,
+    computation_delay_model: ComputationDelayModel | None = None,
 ) -> SimLog:
     """Run one independent experiment using A's Scenario and P's RiskAssessor.
 
@@ -125,8 +130,19 @@ def run_sim(
 
     s, v = 0.0, float(scenario.ego_start[3])  # arc length along ego_path, speed
     min_dist, collision = np.inf, False
+    first_collision_t = None
 
     for k in range(n):
+        if computation_delay_model is not None and k < steps:
+            delay = computation_delay_model.delay_seconds(t_now=float(t[k]))
+            if (isinstance(delay, bool)
+                    or not isinstance(delay, int | float | np.integer | np.floating)
+                    or not np.isfinite(delay) or delay < 0):
+                raise ValueError("Computation delay must be finite and nonnegative seconds.")
+            if delay != 0:
+                raise NotImplementedError(
+                    "Nonzero computation delay needs an execution queue; only zero is supported."
+                )
         ego_xy = path_point(path, s)
         ego_x[k], ego_y[k], ego_v[k] = ego_xy[0], ego_xy[1], v
 
@@ -146,9 +162,16 @@ def run_sim(
             true_xy = state_at(agent, t[k])
             min_dist = min(min_dist, float(np.linalg.norm(ego_xy - true_xy)))
             collision |= in_collision(ego_xy, true_xy, r_safe)
+            if in_collision(ego_xy, true_xy, r_safe) and first_collision_t is None:
+                first_collision_t = float(t[k])
             history = history_until(agent, t[k] - latency)
             if not len(history.t):
                 raise MissingObservationError(f"No observable history for {agent.agent_id!r}.")
+            if observation_model is not None:
+                reference_t = history.t.copy()
+                history = observation_model.observe(history, t_now=float(t[k]))
+                if history.agent_id != agent.agent_id or not np.array_equal(history.t, reference_t):
+                    raise ValueError("Observation model must preserve agent ID and timestamps.")
             est = assessor.assess(ctx, history)
             if est.considered:
                 if np.isnan(est.ttc) or est.ttc < 0:
@@ -193,6 +216,13 @@ def run_sim(
                 )
                 min_dist = min(min_dist, distance)
                 collision |= distance < r_safe
+                if distance < r_safe:
+                    fraction = swept_contact_fraction(
+                        positions[j], positions[j + 1], truth[j], truth[j + 1], r_safe
+                    )
+                    contact = float(t[k] + times[j] + fraction * (times[j + 1] - times[j]))
+                    if first_collision_t is None or contact < first_collision_t:
+                        first_collision_t = contact
         s += ds
         v = next_v
 
@@ -207,4 +237,5 @@ def run_sim(
         float(min_dist),
         bool(collision),
         executed_steps=steps,
+        first_collision_t=first_collision_t,
     )
