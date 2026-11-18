@@ -20,7 +20,21 @@ class ConstantVelocityPredictor(Predictor):
 
 
 class ConstantAccelPredictor(Predictor):
+    """Extrapolate the last observed acceleration. Two or fewer samples fall back to CV."""
+
     name = "ca"
 
     def predict(self, history: Trajectory, horizon: int, dt: float) -> np.ndarray:
-        raise NotImplementedError("TODO(P): W5–W6")
+        t, xy, tau = prediction_inputs(history, horizon, dt)
+        if len(tau) == 0:
+            return np.zeros((0, 2))
+        if len(t) < 3:
+            return xy[-1] + tau[:, None] * last_velocity(history, t, xy)
+        dt1 = float(t[-1] - t[-2])
+        dt0 = float(t[-2] - t[-3])
+        v1 = (xy[-1] - xy[-2]) / dt1
+        v0 = (xy[-2] - xy[-3]) / dt0
+        accel = (v1 - v0) / (0.5 * (dt0 + dt1))
+        # Interval velocities sit at the sample midpoints; shift to the last timestamp.
+        v_now = v1 + 0.5 * accel * dt1
+        return xy[-1] + tau[:, None] * v_now + 0.5 * (tau**2)[:, None] * accel

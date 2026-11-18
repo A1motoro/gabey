@@ -2,8 +2,14 @@ import numpy as np
 import pytest
 
 from pbs.eval.metrics import ade, fde
-from pbs.prediction import ConstantVelocityPredictor, StaticPredictor
-from pbs.types import Trajectory
+from pbs.prediction import (
+    ConstantAccelPredictor,
+    ConstantVelocityPredictor,
+    CTRVPredictor,
+    OraclePredictor,
+    StaticPredictor,
+)
+from pbs.types import Scenario, Trajectory
 
 
 def test_static_predictor_shape():
@@ -62,9 +68,90 @@ def test_cv_does_not_mutate_history():
         np.testing.assert_array_equal(current, original)
 
 
-@pytest.mark.skip(reason="TODO(P): CTRV with yaw_rate≈0 equals CV")
-def test_ctrv_degenerates_to_cv(): ...
+def test_ctrv_degenerates_to_cv():
+    t = np.arange(5) * 0.1
+    history = Trajectory(
+        t, 3 + 8 * t, -2 + 3 * t, np.full(5, np.hypot(8, 3)), np.full(5, np.arctan2(3, 8))
+    )
+    np.testing.assert_allclose(
+        CTRVPredictor().predict(history, horizon=20, dt=0.1),
+        ConstantVelocityPredictor().predict(history, horizon=20, dt=0.1),
+        atol=1e-12,
+    )
 
 
-@pytest.mark.skip(reason="TODO(P): Oracle returns true future")
-def test_oracle_exact(): ...
+def test_ctrv_turn_is_not_cv():
+    dt = 0.1
+    yaw_rate = 0.5
+    speed = 6.0
+    t = np.arange(8) * dt
+    heading = yaw_rate * t
+    history = Trajectory(
+        t,
+        speed / yaw_rate * np.sin(heading),
+        speed / yaw_rate * (1 - np.cos(heading)),
+        np.full_like(t, speed),
+        heading,
+    )
+    turned = CTRVPredictor().predict(history, horizon=6, dt=dt)
+    straight = ConstantVelocityPredictor().predict(history, horizon=6, dt=dt)
+    assert turned.shape == (6, 2)
+    assert np.isfinite(turned).all()
+    assert not np.allclose(turned, straight, atol=1e-6)
+
+
+def test_ca_matches_constant_acceleration():
+    dt = 0.1
+    t = np.arange(8) * dt
+    x0, y0, vx, vy, ax, ay = 1.0, -2.0, 4.0, -1.0, 0.5, 0.25
+    history = Trajectory(
+        t,
+        x0 + vx * t + 0.5 * ax * t**2,
+        y0 + vy * t + 0.5 * ay * t**2,
+        np.hypot(vx + ax * t, vy + ay * t),
+        np.arctan2(vy + ay * t, vx + ax * t),
+    )
+    out = ConstantAccelPredictor().predict(history, horizon=5, dt=dt)
+    future = t[-1] + np.arange(1, 6) * dt
+    truth = np.column_stack(
+        (x0 + vx * future + 0.5 * ax * future**2, y0 + vy * future + 0.5 * ay * future**2)
+    )
+    np.testing.assert_allclose(out, truth, atol=1e-9)
+
+
+def test_ca_two_samples_matches_cv():
+    t = np.arange(2) * 0.1
+    history = Trajectory(
+        t, 3 + 8 * t, -2 + 3 * t, np.full(2, np.hypot(8, 3)), np.full(2, np.arctan2(3, 8))
+    )
+    np.testing.assert_allclose(
+        ConstantAccelPredictor().predict(history, 5, 0.1),
+        ConstantVelocityPredictor().predict(history, 5, 0.1),
+        atol=1e-12,
+    )
+
+
+def test_oracle_exact():
+    t = np.arange(0, 4.01, 0.1)
+    agent = Trajectory(
+        t,
+        2 + 3 * t,
+        -1 + 0.5 * t,
+        np.full_like(t, np.hypot(3, 0.5)),
+        np.full_like(t, np.arctan2(0.5, 3)),
+        agent_id="a",
+    )
+    scenario = Scenario(
+        ego_start=(0.0, 0.0, 0.0, 1.0),
+        ego_path=np.array([[0.0, 0.0], [100.0, 0.0]]),
+        agents=[agent],
+    )
+    predictor = OraclePredictor()
+    predictor.bind(scenario)
+    prefix = Trajectory(
+        agent.t[:11], agent.x[:11], agent.y[:11], agent.v[:11], agent.heading[:11], agent_id="a"
+    )
+    out = predictor.predict(prefix, horizon=10, dt=0.1)
+    times = prefix.t[-1] + np.arange(1, 11) * 0.1
+    truth = np.column_stack((2 + 3 * times, -1 + 0.5 * times))
+    np.testing.assert_allclose(out, truth, atol=1e-12)
