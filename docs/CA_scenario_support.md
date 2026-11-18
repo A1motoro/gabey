@@ -7,7 +7,7 @@
 | 东西 | 位置 | 用途 |
 | --- | --- | --- |
 | `make_scenario("cut_in", a_cutter=±2)` | `src/pbs/data/scenarios.py` | 切入车在换道窗口内加速/减速，CA 终于有纵向加速度可估 |
-| `CA_GRID` / `ca_scenario_set()` | 同上 | 12 个场景：`gap_d ∈ {20,30}` × `rel_v ∈ {0,2}` × `a_cutter ∈ {−2,0,+2}`，**7 benign / 5 dangerous** |
+| `CA_GRID` / `ca_scenario_set()` | 同上 | 12 个场景：`gap_d ∈ {20,30}` × `rel_v ∈ {0,2}` × `a_cutter ∈ {−2,0,+2}`，**6 benign / 6 dangerous** |
 | `Trajectory.accel`（N×2） | `src/pbs/types.py` + 三个 builder | **解析真值**加速度。只用于验证你的估计器，`predict()` 里不许读 |
 | `prediction_slices(...)` | `src/pbs/data/benchmark.py` | 固定 `t0`、固定 horizon 的 `(history, truth)` 切片；所有 predictor 同题 |
 | 40 个 M1 测试 | `tests/test_data.py` | 已覆盖 GT 加速度、a_cutter 运动学、切片无泄漏 |
@@ -17,6 +17,18 @@
 - `DEFAULT_GRID` **没动**，还是 96 个场景（52 dangerous / 44 benign），D 的实验矩阵和文档分母不受影响。
 - `a_cutter` 默认 `0`，旧场景逐位不变；`lc_T` / 横向 quintic 的物理过滤照旧。
 - `prediction_slices` 只依赖 `dt` 和 `scenario.params["duration"]`，不 import 任何 predictor。
+
+这 12 个场景的 **6 / 6** 分布（`is_benign(sc, duration=sc.params["duration"])`）：
+
+| `a_cutter` | `gap_d` | `rel_v` | 结果 |
+| --- | --- | --- | --- |
+| −2 | 20, 30 | 0, 2 | 4 个都碰撞 |
+| 0 | 20, 30 | 0 | benign |
+| 0 | 20, 30 | 2 | dangerous |
+| +2 | 20, 30 | 0, 2 | 4 个都不碰撞 |
+
+`tests/test_data.py::test_ca_slice_builds_and_keeps_both_classes` 逐行钉住这张表：不只是"两类都存在"，
+所以以后改 `CA_GRID` 或 `is_benign` 的口径时会立刻报错。
 
 ## 2. 三条硬约定
 
@@ -41,7 +53,8 @@ for sc in ca_scenario_set().scenarios:
 
 现在 CA 还没实现，可以先把上面的 predictor 换成 `ConstantVelocityPredictor()`——能跑通就说明切片本身没问题，而且你会看到 **CV 在 `a_cutter ≠ 0` 的场景上 ADE 明显变大**，这就是留给 CA 的空间。
 
-我用 CV 在全部 12 个场景 × 25 个切片上实测过（`history=1.0 s`、`horizon=2.0 s`）：
+我用 CV 在全部 12 个场景 × 25 个切片上实测过（`history=1.0 s`、`horizon=2.0 s`；
+用 `python experiments/exp00_cv_ade.py` 可逐位复现）：
 
 | `a_cutter` | CV 的 ADE 均值 | 切片数 |
 | --- | --- | --- |
@@ -56,13 +69,18 @@ for sc in ca_scenario_set().scenarios:
 ```python
 sl = prediction_slices(sc, history=1.0, horizon=2.0)[0]
 sl.t0                 # 1.0 s：第一个窗口（需要 1 s 历史）
+sl.history.t[0]       # == 0.0：窗口左端 = t0 − history
 sl.history.t[-1]      # == 1.0：history 里没有未来，和 run_sim 给 assessor 的观测一致
-len(sl.history.t)     # 11 个采样（10 Hz × 1 s）
+len(sl.history.t)     # 11 个采样（10 Hz × 1 s），**每个切片都一样长**
 sl.truth.shape        # (20, 2)：t0 + k·dt, k = 1..20
 sl.truth_accel.shape  # (20, 2)：同网格的 GT 加速度，用来查你的 a 估得准不准
 ```
 
 一个 15 s 场景默认出 25 个切片（`t0 = 1.0 … 13.0 s`，stride 0.5 s）。
+
+窗口是**滑动**的：第 k 个切片的 `history` 永远是 `[t0 − 1 s, t0]`，不是从 0 秒累积到 `t0` 的前缀
+（最后一个切片也是 11 个点，不是 131 个）。所以"对整段 `history` 拟合"就等于"只看最近 1 秒"，
+正好就是第 2 节第 1 条要的窗口最小二乘。
 
 ## 4. 预期结论（写报告时可以直接用，但要用你自己的数据复核）
 

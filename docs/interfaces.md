@@ -70,10 +70,11 @@ policy.decide(ttc) → brake / cruise
   `[cut_in_t, cut_in_t + accel_T]`（默认 `accel_T = lc_T`），之后保持增速；`a_cutter=0`
   与旧行为逐位一致。`|a_cutter| ≤ 3 m/s²`，坡段结束速度 < 0 时抛 `ValueError`。
 - `CA_GRID` / `ca_scenario_set()`：12 个 cut-in（`gap_d ∈ {20, 30}`、`rel_v ∈ {0, 2}`、
-  `a_cutter ∈ {−2, 0, 2}`），7 benign / 5 dangerous。**不并入 `DEFAULT_GRID`**（D 的 96 场景矩阵不变）。
+  `a_cutter ∈ {−2, 0, 2}`），6 benign / 6 dangerous。**不并入 `DEFAULT_GRID`**（D 的 96 场景矩阵不变）。
 - `prediction_slices(scenario, history=1.0, horizon=2.0, stride=0.5)`：返回
-  `PredictionSlice(t0, history, truth, truth_accel)`；`history` 只含 `t ≤ t0` 的观测，
-  `truth[k]` 是 `t0 + (k+1)·dt` 的真值位置，`truth_accel` 同网格。时间单位是秒。
+  `PredictionSlice(t0, history, truth, truth_accel)`；`history` 是**固定长度的滑动窗口**
+  `[t0 − history, t0]`（`history=1.0` 时恒为 11 个点，随 `t0` 平移，不是从 0 秒起的全部前缀），
+  只含 `t ≤ t0` 的观测，`truth[k]` 是 `t0 + (k+1)·dt` 的真值位置，`truth_accel` 同网格。时间单位是秒。
 
 ## C 第一版实现补充（2026-10-20）
 

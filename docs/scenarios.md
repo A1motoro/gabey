@@ -192,7 +192,7 @@ slices[0].truth_accel              # (20, 2) 解析加速度真值（仅用于�
 | `make_scenario("cut_in", a_cutter=±2)` | `scenarios.py` | P 的 CA 需要"纵向非匀速"的切入 |
 | `Trajectory.accel`（N×2 解析真值） | `types.py` + 三个 builder | P 验证"估出来的 a"对不对；**预测器不许在测试时读它** |
 | `prediction_slices(...)` | `data/benchmark.py` | exp01 的固定切片：同一 `t0`、同一 horizon，所有 predictor 同题 |
-| `ca_scenario_set()` | `scenarios.py` | 12 个场景，7 benign / 5 dangerous |
+| `ca_scenario_set()` | `scenarios.py` | 12 个场景，6 benign / 6 dangerous（−2 全危险、0 各半、+2 全安全） |
 
 三条给 P 的硬约定（详见 [CA_scenario_support.md](CA_scenario_support.md)）：
 

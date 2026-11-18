@@ -98,6 +98,7 @@ python examples/cut_in_demo.py
 | --- | --- | --- |
 | `experiments/exp00_l1_baseline.py` | P 的 L1：CV ADE/FDE + Reactive/CV cut-in timeline | `l1-baseline/cv_ade_fde.png`、`l1-baseline/cut_in_timeline.png` |
 | `experiments/exp00_scenarios.py` | **M1 场景基线**：三类场景的几何、quintic 横向加速度过滤、96 场景 danger map | `outputs/figures/exp00_*.png` |
+| `experiments/exp00_cv_ade.py` | **M1 上的 CV 基线**：在 `ca_scenario_set()` 的 12×25 固定切片上给 CV 打分（不改预测器） | `outputs/figures/exp00_cv_ade.png` |
 | `experiments/exp01_predictor_ade.py` | CV / CA / CTRV / LR 的 ADE/FDE vs horizon | _TBD_ |
 | `experiments/exp02_threshold_sweep.py` | 各系统碰撞率 vs 误报率 trade-off | _TBD_ |
 | `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图** | _TBD_ |
