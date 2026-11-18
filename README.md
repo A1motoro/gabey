@@ -50,8 +50,23 @@ Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903
 
 验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
 产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块或
-D 的实验矩阵。CA、CTRV、Oracle 留待 L2，LR 留待 L3；原 `exp01`–`exp05` 仍待后续集成。
+D 的实验矩阵。CA、CTRV、Oracle 已在 L2 实现，LR 留待 L3；`exp02`–`exp05` 仍待后续集成。
 测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
+
+### P 的 L2 预测器验证
+
+CA 用最近 10 帧位置拟合二维速度/加速度并限制停车后的反向外推；CTRV 用解缠航向
+估计转率，零转率退化为 CV；Oracle 按唯一 agent ID 插值真实未来。
+保持已有 `predict(history, horizon, dt)`、`bind(scenario)` 和 Risk/P/C 接口。
+
+```bash
+python -m pytest tests/test_predictors.py tests/test_l2_predictors.py -q
+python experiments/exp01_predictor_ade.py
+```
+
+`exp01` 比较 CV / CA / CTRV / Oracle，使用 A 的 CA 场景集及 lead-brake/crossing 固定切片，
+输出 CSV、ADE/FDE 图与摘要到 `outputs/figures/l2-predictors/`。
+适用条件、实测结果及 Oracle 真值覆盖限制见 [docs/l2-validation.md](docs/l2-validation.md)。
 
 ## 目录结构
 
@@ -99,7 +114,7 @@ python examples/cut_in_demo.py
 | `experiments/exp00_l1_baseline.py` | P 的 L1：CV ADE/FDE + Reactive/CV cut-in timeline | `l1-baseline/cv_ade_fde.png`、`l1-baseline/cut_in_timeline.png` |
 | `experiments/exp00_scenarios.py` | **M1 场景基线**：三类场景的几何、quintic 横向加速度过滤、96 场景 danger map | `outputs/figures/exp00_*.png` |
 | `experiments/exp00_cv_ade.py` | **M1 上的 CV 基线**：在 `ca_scenario_set()` 的 12×25 固定切片上给 CV 打分（不改预测器） | `outputs/figures/exp00_cv_ade.png` |
-| `experiments/exp01_predictor_ade.py` | CV / CA / CTRV / LR 的 ADE/FDE vs horizon | _TBD_ |
+| `experiments/exp01_predictor_ade.py` | P 的 L2：CV / CA / CTRV / Oracle 同切片 ADE/FDE | `l2-predictors/exp01_predictor_ade.png` |
 | `experiments/exp02_threshold_sweep.py` | 各系统碰撞率 vs 误报率 trade-off | _TBD_ |
 | `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图** | _TBD_ |
 | `experiments/exp04_latency.py` | 感知延迟 τ ∈ [0, 300] ms 敏感性 | _TBD_ |

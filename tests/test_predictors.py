@@ -2,7 +2,12 @@ import numpy as np
 import pytest
 
 from pbs.eval.metrics import ade, fde
-from pbs.prediction import ConstantVelocityPredictor, StaticPredictor
+from pbs.prediction import (
+    ConstantVelocityPredictor,
+    CTRVPredictor,
+    OraclePredictor,
+    StaticPredictor,
+)
 from pbs.types import Trajectory
 
 
@@ -62,9 +67,21 @@ def test_cv_does_not_mutate_history():
         np.testing.assert_array_equal(current, original)
 
 
-@pytest.mark.skip(reason="TODO(P): CTRV with yaw_rate≈0 equals CV")
-def test_ctrv_degenerates_to_cv(): ...
+def test_ctrv_degenerates_to_cv():
+    t = np.array([0.0, 0.15, 0.4])
+    h = Trajectory(t, 8 * t, -2 * t, np.full(3, np.hypot(8, 2)), np.zeros(3))
+    np.testing.assert_allclose(
+        CTRVPredictor().predict(h, 20, 0.1), ConstantVelocityPredictor().predict(h, 20, 0.1)
+    )
 
 
-@pytest.mark.skip(reason="TODO(P): Oracle returns true future")
-def test_oracle_exact(): ...
+def test_oracle_exact():
+    from pbs.data import make_scenario, prediction_slices
+
+    scenario = make_scenario("cut_in", a_cutter=2)
+    predictor = OraclePredictor()
+    predictor.bind(scenario)
+    for sl in prediction_slices(scenario):
+        np.testing.assert_array_equal(
+            predictor.predict(sl.history, len(sl.truth), scenario.dt), sl.truth
+        )

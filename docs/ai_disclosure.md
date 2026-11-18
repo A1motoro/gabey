@@ -4,6 +4,7 @@
 
 | 日期 | 成员 | 工具 | 用途 | 涉及文件 | 人工检查方式 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-18 | P（华华） | OpenAI Codex | pull 最新 main 后在独立分支实现 L2 CA/CTRV/Oracle、解析及集成测试、exp01 同切片误差验证，提交 PR | 三个 L2 预测器、对应测试、`experiments/exp01_predictor_ade.py`、README、接口追加约定、L2 验证报告与贡献记录 | AI 用解析公式、观测隔离、原仿真接口及 CLI 检查；L2 专项 69 passed，main 8072b02 上回归 286 passed / 1 deselected，Ruff/Black 通过；已有 Windows Demo 端口检查超时单独记录于 `docs/l2-validation.md`。人工复核待 P/C 查看并解释模型适用条件 |
 | 2026-09-29 | A1m | Claude | 生成项目骨架（目录、`types.py`、walking skeleton、文档模板） | 全仓库初始提交 | 阅读全部文件；smoke test 通过 |
 | 2026-09-29 | A1m | Claude | 按 spec v2 重构骨架（三层 baseline、risk 包、counterfactual、实验矩阵）与文档 | `src/pbs/`、`docs/spec.md`、`docs/interfaces.md`、README | 阅读全部文件；smoke / counterfactual 测试通过 |
 | 2026-10-09 | P（用户身份据既有记忆） | Codex | 实现 L1 CV、TTC、Reactive，编写验证样例和测试；排查 Windows 环境启动问题 | `src/pbs/prediction/`、`src/pbs/risk/`、L1 测试、`experiments/exp00_l1_baseline.py`、`experiments/l1_fixtures.py`、相关文档 | 五轮自动验证记录见 `docs/l1-validation.md`；人工复核待用户查看，未声称已完成人工检查 |
