@@ -7,14 +7,14 @@
 - **课程**：AIE1903 Exploration on Basic Autonomous Driving · Topic 9 — Predictive Braking Simulator (★★★)
 - **团队**（4 人）：
 
-| 代号  | 成员           | 角色         | 模块                             |
-| --- | ------------ | ---------- | ------------------------------ |
-| C   | _前背痛_        | 仿真与决策      | M3 `pbs.sim`                   |
-| P   | _华华_         | 预测 + 风险评估  | M2 `pbs.prediction`、`pbs.risk` |
-| A   | _Persistent_ | 场景         | M1 `pbs.data`                  |
-| D   | _yj_         | 评估与实验 + 统筹 | M4 `pbs.eval`、`pbs.systems`    |
+| 代号 | 成员 | 角色 | 模块 |
+| --- | --- | --- | --- |
+| C | 前背痛 | 仿真与决策 | M3 `pbs.sim` |
+| P | 华华 | 预测 + 风险评估 | M2 `pbs.prediction`、`pbs.risk` |
+| A | Persistent | 场景 | M1 `pbs.data` |
+| D | yj | 评估与实验 + 统筹 | M4 `pbs.eval`、`pbs.systems` |
 
-完整方案见 [docs/spec.md](docs/spec.md)。
+完整方案见 [docs/spec.md](docs/spec.md)（v3：实现从 W7 起步，排期见 §5，具体形式见 §7，最终交付物见 §8）。
 
 ## Motivation
 
@@ -33,6 +33,8 @@ pip install -e .                   # 使 `import pbs` 可用
 pytest                             # smoke test
 python experiments/exp00_l1_baseline.py  # P 的 L1 验证（CV / TTC / Reactive）
 python experiments/exp00_scenarios.py    # A 的 M1 场景基线（96 个场景 + no-braking 判定）
+python experiments/exp02_threshold_sweep.py --quick   # D 的 L2：碰撞率–误报率
+python experiments/exp03_failure_boundary.py --quick  # D 的 L2：四条 failure boundary
 ```
 
 ### P 的 L1 基线验证
@@ -49,8 +51,9 @@ Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903
 直接调用环境内的 `python.exe` 可能缺少原生数值库所需的环境设置。
 
 验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
-产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块或
-D 的实验矩阵。CA、CTRV、Oracle 留待 L2，LR 留待 L3；原 `exp01`–`exp05` 仍待后续集成。
+产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块。
+D 的 L2 实验矩阵见 [docs/d-baseline.md](docs/d-baseline.md) §9：`exp02`、`exp03`、`exp05` 已支持 `--quick`。
+CA、CTRV、Oracle 已接入；LR 与 `exp04` 仍是 L3。`--quick` 网格是带中止换道的解析切入，和 A 的 `make_scenario` 网格分开。
 测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
 
 ## 目录结构
@@ -64,9 +67,10 @@ src/pbs/
   sim/            M3  run_sim, ego rollout, footprint, policy, latency
   eval/           M4  counterfactual, metrics, experiment matrix, plots
   systems.py      被比较的 AEB 系统注册表
+  demo.py         单场景多系统对比动画（v3 新增，W9–W10）
 experiments/      一个实验一个脚本，产出 outputs/figures/
 tests/            pytest
-docs/             interfaces / scenarios / ai_disclosure / contributions
+docs/             interfaces / scenarios / d-baseline / ai_disclosure / contributions
 data/             不入库（见「数据说明」）
 ```
 
@@ -99,10 +103,10 @@ python examples/cut_in_demo.py
 | `experiments/exp00_l1_baseline.py` | P 的 L1：CV ADE/FDE + Reactive/CV cut-in timeline | `l1-baseline/cv_ade_fde.png`、`l1-baseline/cut_in_timeline.png` |
 | `experiments/exp00_scenarios.py` | **M1 场景基线**：三类场景的几何、quintic 横向加速度过滤、96 场景 danger map | `outputs/figures/exp00_*.png` |
 | `experiments/exp01_predictor_ade.py` | CV / CA / CTRV / LR 的 ADE/FDE vs horizon | _TBD_ |
-| `experiments/exp02_threshold_sweep.py` | 各系统碰撞率 vs 误报率 trade-off | _TBD_ |
-| `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图** | _TBD_ |
-| `experiments/exp04_latency.py` | 感知延迟 τ ∈ [0, 300] ms 敏感性 | _TBD_ |
-| `experiments/exp05_cut_in_lead_time.py` | Reactive vs Predictive 的 cut-in lead time | _TBD_ |
+| `experiments/exp02_threshold_sweep.py` | 各系统碰撞率 vs 误报率 trade-off（`--quick`） | `exp02_tradeoff.png` |
+| `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图**（`--quick`） | `exp03_boundaries.png` |
+| `experiments/exp04_latency.py` | 感知延迟 τ ∈ [0, 300] ms 敏感性 | _TBD_（L3） |
+| `experiments/exp05_cut_in_lead_time.py` | Reactive vs CV / CTRV 的 cut-in lead time（`--quick`） | `exp05_lead_time.png` |
 
 A 的 M1 同时是 CA 的评测底座：`ca_scenario_set()`（12 个带纵向加速度的切入）、`Trajectory.accel` 真值、`prediction_slices()` 固定切片。用法与坑见 [docs/CA_scenario_support.md](docs/CA_scenario_support.md)。
 
@@ -111,7 +115,6 @@ A 的 M1 同时是 CA 的评测底座：`ca_scenario_set()`（12 个带纵向加
 P 的 L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s；
 两者均未碰撞。该样例用于方法验证，不能据此推断所有场景的安全收益。
 曲线、参数与测试记录见 [L1 验证报告](docs/l1-validation.md)。
-
 A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`outputs/figures/` 下得到三张图：
 
 | 文件 | 内容 |
@@ -120,7 +123,7 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 | `exp00_lateral_accel.png` | quintic 的 y/ẏ/ÿ + 横向加速度过滤（最短换道时长 2.60 s） |
 | `exp00_danger_map.png` | 96 个场景的 no-braking danger map（四边界图的底板） |
 
-_待补充：四边界叠加图（exp03）、trade-off 曲线（exp02）、Reactive vs CV 全量 timeline（exp05）。_
+四边界、trade-off 和 lead time 的 `--quick` 结果见 [D 的评估说明](docs/d-baseline.md) §9。
 
 ## Limitations
 
@@ -129,13 +132,24 @@ _待补充：四边界叠加图（exp03）、trade-off 曲线（exp02）、React
 - 无 perception：直接使用轨迹级数据。
 - 2D 简化。
 
+## 交付与日程
+
+| Deadline | 日期 | 交付物 |
+| --- | --- | --- |
+| DL1 | 10/27（W7 二） | Proposal 展示 10 + 5 min |
+| DL2 | 11/1（W7 日） | Proposal 文档 4–6 页 |
+| DL3 | 12/8（W13 二） | Final 展示 + live demo 10 + 10 min |
+| DL4 | 12/13（W13 日） | Code package（`gabey-v1.0.zip`）+ 报告 8–12 页 |
+
+内部里程碑：M0 端到端（W7）→ M1 = L1（W9）→ M2 = L2 + 功能冻结（W11）→ M3 报告初稿（W12）。
+
 ## 分工与贡献
 
-见 [docs/contributions.md](docs/contributions.md)；接口约定见 [docs/interfaces.md](docs/interfaces.md)。
+见 [docs/contributions.md](docs/contributions.md)；接口约定见 [docs/interfaces.md](docs/interfaces.md)；D 的评估设计见 [docs/d-baseline.md](docs/d-baseline.md)。
 
 ## AI 工具使用声明
 
-按课程 AI Tool Usage Policy 记录于 [docs/ai_disclosure.md](docs/ai_disclosure.md)。
+按课程 AI Tool Usage Policy，每人一份：[C](docs/ai_disclosure/C.md) · [P](docs/ai_disclosure/P.md) · [A](docs/ai_disclosure/A.md) · [D](docs/ai_disclosure/D.md)（说明见 [docs/ai_disclosure/README.md](docs/ai_disclosure/README.md)）。
 
 ## 数据说明
 

@@ -43,7 +43,7 @@ policy.decide(ttc) → brake / cruise
 | M1 | `ca_scenario_set() -> ScenarioSet`；`CA_GRID`（12 个带纵向加速度的 cut-in） | A | ✅ 新增（CA） |
 | M1 | `prediction_slices(scenario, history, horizon, stride) -> list[PredictionSlice]` | A | ✅ 新增（CA） |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
-| M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV ✅；其余 TODO（L2/L3） |
+| M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV / CA / CTRV / Oracle ✅；LR TODO（L3） |
 | Risk | `assess_risk(ego_future, agent_future, dt, r_safe) -> RiskEstimate`（纯函数） | P | ✅ L1；严格距离 `< r_safe`，第 k 行时间 `(k+1)*dt` |
 | Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L1；Predictive 将延迟观测的预测对齐当前时间 |
 | M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency) -> SimLog` | C | ✅ skeleton |
@@ -51,7 +51,7 @@ policy.decide(ttc) → brake / cruise
 | M3 | `NeverBrakePolicy`、`TTCThresholdPolicy(ttc_threshold, a_brake)` | C | ✅ |
 | M4 | `make_system(name)`；`SYSTEMS`、`CORE` | D | ✅ |
 | M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
-| M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`plot_boundaries` | D | TODO |
+| M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`rescue_rate`、`plot_boundaries` | D | ✅ L2；`exp04` latency 仍为 L3 |
 
 ### M1 补充约定（2026-10，A）
 
