@@ -53,6 +53,22 @@ policy.decide(ttc) → brake / cruise
 | M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
 | M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`plot_boundaries` | D | TODO |
 
+### M2 追加：P L2（2026-11-18）
+
+- 上表的 M2 状态更新：CV、CA、CTRV、Oracle 已实现；LR 仍为 L3 TODO。
+- 原 `predict(history, horizon, dt)`、`bind(scenario)`、模型名称与时间语义不变。
+  CA 新增可选构造参数 `m=10`（整数 ≥ 3）；CTRV 新增 `m=10`（整数 ≥ 2）。
+- CA 从最近至多 m 帧位置按真实时间间隔作二次最小二乘拟合，不读取 `Trajectory.accel`
+  或对 `v` 差分；不足 3 帧使用 CV。沿拟合速度方向减速至零后停止该方向运动，
+  垂直方向加速度继续外推；最后两个位置相同或刹车拟合反向过冲时保持原位。
+- CTRV 从最近至多 m 帧 `heading` 解缠后拟合转率，以最后观测的 `v`/`heading`
+  外推圆弧；不足 2 帧或 `|yaw_rate| < 1e-8 rad/s` 使用原二维 CV。
+- Oracle 在 bind 时检查唯一非空 ID 并复制真值，以最后观测时间为起点查询，插值与
+  `state_at` 一致（超出范围保持端点）。只有真值覆盖所有请求时刻时才可解释为零预测误差上界；
+  用于长时域或延迟实验时，A/D 应保证足够的真值覆盖。重新 bind 会替换原场景映射。
+- 三个模型复用 L1 输入校验，允许 `horizon=0` 返回 `(0, 2)`，不修改输入。
+  延迟对齐继续由已有 `PredictiveAssessor` 完成，其网格间插值近似保持不变。
+
 ### M1 补充约定（2026-10，A）
 
 - `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。**`run_sim(..., duration=scenario.params["duration"])`**——
