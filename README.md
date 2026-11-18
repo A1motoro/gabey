@@ -52,7 +52,7 @@ Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903
 
 验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
 产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块或
-D 的实验矩阵。CA、CTRV、Oracle 已在 L2 实现，LR 留待 L3。
+D 的实验矩阵。CA、CTRV、Oracle 已在 L2 实现，LR 已在 P 的 L3 实现。
 D 的 L2 实验矩阵见 [docs/d-baseline.md](docs/d-baseline.md) §9：`exp02`、`exp03`、`exp05` 已支持 `--quick`，
 `exp04` 仍是 L3。场景由 A 的 `make_scenario` / `scenario_set` 生成，exp02 另加 6 个中止换道。
 测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
@@ -71,6 +71,19 @@ python experiments/exp01_predictor_ade.py
 `exp01` 比较 CV / CA / CTRV / Oracle，使用 A 的 CA 场景集及 lead-brake/crossing 固定切片，
 输出 CSV、ADE/FDE 图与摘要到 `outputs/figures/l2-predictors/`。
 适用条件、实测结果及 Oracle 真值覆盖限制见 [docs/l2-validation.md](docs/l2-validation.md)。
+
+### P 的 L3：LR 预测器
+
+`LinearRegressionPredictor(m=10)` 用最近位置按真实时间间隔拟合二维线性趋势，
+使用拟合截距平滑观测噪声；单帧退化为 CV，不读取未来或真值加速度。
+
+```bash
+python -m pytest tests/test_l3_predictors.py -q
+python experiments/exp01_predictor_ade.py --include-lr
+```
+
+L3 的五模型同切片结果输出至 `outputs/figures/l3-predictors/`；原 exp01 默认四模型入口保留。
+验证与模型限制见 [docs/l3-validation.md](docs/l3-validation.md)。
 
 ## 目录结构
 

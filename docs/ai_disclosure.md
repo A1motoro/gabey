@@ -4,6 +4,7 @@
 
 | 日期 | 成员 | 工具 | 用途 | 涉及文件 | 人工检查方式 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-18 | P（华华） | OpenAI Codex | 同步合并 PR #8 后的 main，实现 P L3 LR 位置窗口拟合，增加 exp01 五模型对比并通过 PR 合并 | `src/pbs/prediction/regression.py`、`tests/test_l3_predictors.py`、`experiments/exp01_predictor_ade.py`、README、接口追加约定、L3 验证报告、贡献记录 | LR 专项 32 passed；解析直线、噪声、窗口隔离、延迟及既有 D 矩阵验证；回归与实测误差见 `docs/l3-validation.md`。人工复核待 P/C，未声称真实交通安全收益 |
 | 2026-11-18 | P（华华） | OpenAI Codex | 审核并修正 PR #8：无可行预算时的阈值回退、完整轨迹场景 ID、不可见碰撞标记、README 失效链接；保留 P 的 L2 预测器后合并 | `src/pbs/eval/sweep.py`、`src/pbs/eval/plots.py`、`tests/test_sweep.py`、README、D 验证说明、本记录 | 新增预算回退/缓存隔离/标记可见性测试；exp02/03/05 quick 重跑并核对 CSV 与图；已知 Windows Demo 端口测试单独排除，人工复核仍由组员完成 |
 | 2026-11-18 | P（华华） | OpenAI Codex | pull 最新 main 后在独立分支实现 L2 CA/CTRV/Oracle、解析及集成测试、exp01 同切片误差验证，提交 PR | 三个 L2 预测器、对应测试、`experiments/exp01_predictor_ade.py`、README、接口追加约定、L2 验证报告与贡献记录 | AI 用解析公式、观测隔离、原仿真接口及 CLI 检查；L2 专项 69 passed，main 8072b02 上回归 286 passed / 1 deselected，Ruff/Black 通过；已有 Windows Demo 端口检查超时单独记录于 `docs/l2-validation.md`。人工复核待 P/C 查看并解释模型适用条件 |
 | 2026-09-29 | A1m | Claude | 生成项目骨架（目录、`types.py`、walking skeleton、文档模板） | 全仓库初始提交 | 阅读全部文件；smoke test 通过 |

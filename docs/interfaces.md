@@ -43,7 +43,7 @@ policy.decide(ttc) → brake / cruise
 | M1 | `ca_scenario_set() -> ScenarioSet`；`CA_GRID`（12 个带纵向加速度的 cut-in） | A | ✅ 新增（CA） |
 | M1 | `prediction_slices(scenario, history, horizon, stride) -> list[PredictionSlice]` | A | ✅ 新增（CA） |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
-| M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV / CA / CTRV / Oracle ✅；LR TODO（L3） |
+| M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV / CA / CTRV / Oracle ✅ L2；LR ✅ L3 |
 | Risk | `assess_risk(ego_future, agent_future, dt, r_safe) -> RiskEstimate`（纯函数） | P | ✅ L1；严格距离 `< r_safe`，第 k 行时间 `(k+1)*dt` |
 | Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L1；Predictive 将延迟观测的预测对齐当前时间 |
 | M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency) -> SimLog` | C | ✅ skeleton |
@@ -68,6 +68,16 @@ policy.decide(ttc) → brake / cruise
   用于长时域或延迟实验时，A/D 应保证足够的真值覆盖。重新 bind 会替换原场景映射。
 - 三个模型复用 L1 输入校验，允许 `horizon=0` 返回 `(0, 2)`，不修改输入。
   延迟对齐继续由已有 `PredictiveAssessor` 完成，其网格间插值近似保持不变。
+
+### M2 追加：P L3（2026-11-18）
+
+- `LinearRegressionPredictor(m=10)` 已实现，模型名 `lr` 和原 `predict`/`bind` 接口不变。
+  m 为整数 ≥ 2；只取最近至多 m 个位置样本，按真实采样时间拟合 x(t)、y(t) 直线。
+- 查询时间仍为 `t_last + (k+1)·dt`。位置使用拟合截距而非强制经过最后噪声观测，
+  以保留窗口平滑效果；至少 2 帧时不使用速度/航向元数据或 `Trajectory.accel`。
+- 单帧按速度/航向退化为 CV；输入校验与 `(0, 2)` 空时域行为复用 L1。
+  不读取未来、不修改输入，延迟对齐由现有 `PredictiveAssessor` 完成。
+- D 的 `make_system("lr")` 已可直接使用。`CORE` 四边界集合保持原定义。
 
 ### M1 补充约定（2026-10，A）
 
