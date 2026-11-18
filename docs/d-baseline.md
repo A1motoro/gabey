@@ -1,5 +1,7 @@
 # D 的 Evaluation Baseline（M4 · `pbs.eval` / `pbs.systems`）
 
+> 本页记录 D 在 PR #8 中验证的单阈值与圆形实验。后续矩阵以 [L2 基线规范](l2-baseline.md)为准，接入工作由 D 负责。
+
 PR #8 审核修正（2026-11-18）：没有阈值满足误刹预算时，先选择最低误刹率；
 场景 ID 纳入完整轨迹、路径和几何参数，避免不同中间运动错误共享 benign 标签；
 Reactive/CA 的 x/+ 碰撞点保持可见；README 链接恢复到仓库实际存在的 spec 和 AI 记录。

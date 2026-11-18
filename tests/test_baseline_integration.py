@@ -12,6 +12,7 @@ from experiments.l1_fixtures import cut_in_fixture
 from pbs.eval.counterfactual import is_benign
 from pbs.eval.metrics import evaluate
 from pbs.risk import NullAssessor
+from pbs.sim.collision import R_SAFE
 from pbs.sim.policy import NeverBrakePolicy, TTCThresholdPolicy
 from pbs.sim.simulator import run_sim
 from pbs.systems import make_system
@@ -82,11 +83,15 @@ def test_l1_multiagent_takes_nearest_risk(system):
 
 def test_l1_cut_in_cv_brakes_before_reactive():
     scenario = cut_in_fixture()
-    no_brake = run_sim(scenario, NullAssessor(), NeverBrakePolicy(), duration=6.0)
+    no_brake = run_sim(
+        scenario, NullAssessor(), NeverBrakePolicy(), duration=6.0, r_safe=R_SAFE
+    )
     assert no_brake.collision
     onsets = {}
     for system in ("reactive", "cv"):
-        log = run_sim(scenario, make_system(system), TTCThresholdPolicy(), duration=6.0)
+        log = run_sim(
+            scenario, make_system(system), TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE
+        )
         assert not log.collision
         onsets[system] = evaluate(log, benign=False)["brake_onset_t"]
     assert onsets["cv"] == pytest.approx(1.7)
@@ -98,7 +103,9 @@ def test_l1_cut_in_cv_brakes_before_reactive():
 def test_l1_benign_cut_in_is_not_a_false_brake(system):
     scenario = cut_in_fixture(rel_v=-2.0)
     assert is_benign(scenario, duration=6.0)
-    log = run_sim(scenario, make_system(system), TTCThresholdPolicy(), duration=6.0)
+    log = run_sim(
+            scenario, make_system(system), TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE
+        )
     assert not evaluate(log, benign=True)["false_brake"]
     assert not log.collision
 
@@ -119,6 +126,7 @@ def test_l1_evidence_cli_generates_accuracy_and_timeline(tmp_path):
     )
     assert "Artifacts:" in result.stdout
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["r_safe_m"] == pytest.approx(2.5)
     assert summary["cv_lead_time_s"] == pytest.approx(0.3)
     assert not summary["systems"]["cv"]["collision"]
     for name in [

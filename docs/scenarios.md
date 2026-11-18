@@ -1,5 +1,7 @@
 # 场景设计（M1 · `pbs.data`）— Owner: A
 
+> 本页的场景基线图和历史统计按圆形判定复现。将同一生成器用于 L2 闭环实验时，按 [L2 基线规范](l2-baseline.md)重新判断碰撞及良性场景。
+
 > 一句话：**我们不用真实交通分布，而是用一组参数可控、物理上站得住脚的合成场景；每个场景都要能被问一句"完全不刹车会不会撞"，因为这是后面四条 failure boundary 的共同分母。**
 >
 > 代码：[`src/pbs/data/scenarios.py`](../src/pbs/data/scenarios.py) · [`src/pbs/data/loader.py`](../src/pbs/data/loader.py)

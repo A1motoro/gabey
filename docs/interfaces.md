@@ -2,6 +2,8 @@
 
 > W4 冻结。冻结后**只加不改**：可新增字段 / 可选参数，不得重命名、删除或改变语义。改动需在 PR 中 @ 全员。设计依据见 [spec.md](spec.md)。
 
+[L2 基线规范](l2-baseline.md)定义滞回设置、定向矩形和距离口径。位置字段表示车身中心。传入 `r_safe=None` 选择 L2 几何，传入数值选择 L1 圆形判定。车辆真值扫掠在每个子步内以中点航向做平移扫掠，旋转和加速度为子步近似。
+
 ## 约定
 
 - 单位：m / s / m·s⁻¹ / rad；统一世界坐标（不使用 grid cell）。
@@ -15,8 +17,8 @@
 | --- | --- | --- |
 | `Trajectory` | agent 轨迹 | `t, x, y, v, heading: (N,)`, `agent_type`, `agent_id` |
 | `Scenario` | 仿真输入 | `ego_start=(x,y,heading,v)`, `ego_path: (M,2)`, `agents`, `dt`, `params`, `kind`, `lane_width` |
-| `SimLog` | 仿真输出 | `t, ego_x, ego_y, ego_v, ego_a, ttc: (n,)`, `action`, `min_dist`, `collision` |
-| `RiskContext` | C → P，每步只读 | `t_now, ego_xy, ego_heading, ego_v, ego_future: (H,2), ego_path, lane_width, horizon, dt, r_safe` |
+| `SimLog` | 仿真输出 | `t, ego_x, ego_y, ego_v, ego_a, ttc: (n,)`, `action`, `min_dist`, `collision`。可选字段 `executed_steps`、`first_collision_t`、`min_dist_until_contact` 见[日志字段说明](l2-baseline.md#日志与距离口径) |
+| `RiskContext` | C → P，每步只读 | `t_now, ego_xy, ego_heading, ego_v, ego_future: (H,2), ego_path, lane_width, horizon, dt, r_safe, ego_future_heading` |
 | `RiskEstimate` | P → C | `ttc`（无冲突 inf）, `conflict_step`, `considered`（Reactive 忽略时 False） |
 
 ## P / C 边界
@@ -44,18 +46,17 @@ policy.decide(ttc) → brake / cruise
 | M1 | `prediction_slices(scenario, history, horizon, stride) -> list[PredictionSlice]` | A | ✅ 新增（CA） |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
 | M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV / CA / CTRV / Oracle ✅ L2；LR ✅ L3 |
-| Risk | `assess_risk(ego_future, agent_future, dt, r_safe) -> RiskEstimate`（纯函数） | P | ✅ L1；严格距离 `< r_safe`，第 k 行时间 `(k+1)*dt` |
+| Risk | `assess_risk(ego_future, agent_future, dt, r_safe=None, *, ego_heading=None, agent_heading=None, pedestrian=False) -> RiskEstimate` | P | 第 k 行时间为 `(k+1)*dt`。几何规则见 [L2 基线](l2-baseline.md#制动与碰撞) |
 | Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L1；Predictive 将延迟观测的预测对齐当前时间 |
-| M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency) -> SimLog` | C | ✅ skeleton |
+| M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency, collision_dt, …) -> SimLog` | C | 已实现 L2 闭环 |
 | M3 | `ego_rollout(path, s, v, horizon, dt)`、`in_collision(p, q, r_safe)` | C | ✅ |
-| M3 | `NeverBrakePolicy`、`TTCThresholdPolicy(ttc_threshold, a_brake)` | C | ✅ |
+| M3 | `HysteresisPolicy(t_on, t_off, a_brake)`、`NeverBrakePolicy`、`TTCThresholdPolicy(ttc_threshold, a_brake)` | C | 依次用于 L2 主实验、无制动对照和 L1 复现 |
 | M4 | `make_system(name)`；`SYSTEMS`、`CORE` | D | ✅ |
 | M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
 | M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`rescue_rate`、`plot_boundaries` | D | ✅ L2；`exp04` latency 仍为 L3 |
 
 ### M2 追加：P L2（2026-11-18）
 
-- 上表的 M2 状态更新：CV、CA、CTRV、Oracle 已实现；LR 仍为 L3 TODO。
 - 原 `predict(history, horizon, dt)`、`bind(scenario)`、模型名称与时间语义不变。
   CA 新增可选构造参数 `m=10`（整数 ≥ 3）；CTRV 新增 `m=10`（整数 ≥ 2）。
 - CA 从最近至多 m 帧位置按真实时间间隔作二次最小二乘拟合，不读取 `Trajectory.accel`
@@ -81,8 +82,7 @@ policy.decide(ttc) → brake / cruise
 
 ### M1 补充约定（2026-10，A）
 
-- `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。**`run_sim(..., duration=scenario.params["duration"])`**——
-  `run_sim` 的默认值是 10 s，不传会把慢速收敛组合误判成 benign。
+- `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。闭环实验显式传入评分时长。若为 Oracle 生成了额外的未来轨迹，仍使用[实验设定的评分时长](l2-baseline.md#c-的复现配置与-d-的接入)。
 - `Scenario.agents` 恒为 1 个元素（每类场景单目标）；`agent_id ∈ {"cutter", "lead", "crosser"}`。
 - `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。
 - `load_toy()` 不含 ego（`agent_id` = 文件 stem）；ego 用新增的 `load_toy_ego()`。
@@ -104,7 +104,7 @@ policy.decide(ttc) → brake / cruise
 
 ## C 第一版实现补充（2026-10-20）
 
-本节为 C 本次兼容扩展与集成说明；上表保留原骨架记录，不表示 A/P TODO 已完成。
+本节记录 C 第一版的兼容扩展和时间语义。
 详见 [C baseline 接入与降级策略](C_baseline.md)。提交 PR 时请提示 A/P/D 审阅以下行为。
 
 - 新增 `HysteresisPolicy(t_on=2, t_off=3, a_brake=6)`，支持 `decide(ttc)` 与 `reset()`。

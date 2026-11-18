@@ -1,5 +1,7 @@
 # Cut-in 2.5D Demo：运行、测试与扩展
 
+Demo 采用 [L2 基线规范](l2-baseline.md)的滞回策略与定向矩形几何。车辆长 5.0 m、宽 2.5 m。此宽度是本项目选定的建模尺寸。在 3.5 m 的相邻车道居中并排时，两车侧边相距 1.0 m。
+
 ## 启动
 
 首次下载仓库后，使用 Python 3.10 或以上版本，在 `gabey` 根目录安装依赖并启动：
@@ -29,16 +31,16 @@ JavaScript 播放事件测试 9 passed。已进行浏览器交互与布局检查
 
 1. **标准场景**：初始 gap=20 m、rel_v=5 m/s、cut-in start=0.5 s、duration=3 s。
    点击 Play，旁车应平滑切入；本车只沿原车道减速，不转向。
-2. **关键时刻**：拖动时间轴至 1.70 s，左侧应为 CRUISE、右侧为 BRAKE，CV TTC=1.9 s。
+2. **关键时刻**：拖动时间轴至 1.10 s，左侧应为 CRUISE、右侧为 BRAKE，CV TTC=1.9 s。
    在 2.00 s 左侧开始 BRAKE。首次触发时速度尚未变化是正常的：动作影响下一个状态。
    可聚焦时间轴用左右方向键微调，或点击 Step +0.1 s。
-3. **结束结果**：拖至 10 s，两侧 FINISHED。Reactive 首刹 2.0 s，CV 首刹 1.7 s，
-   提前 0.30 s；两侧都不碰撞。全程最小中心距分别约 3.24 m 和 3.00 m。
+3. **结束结果**：拖至 10 s，两侧 FINISHED。Reactive 首刹 2.0 s，CV 首刹 1.1 s，
+   提前 0.90 s；两侧都不碰撞。全程最小中心距分别约 5.40 m 和 5.52 m。
    这组数据说明更早触发，不说明 CV 在所有场景都更安全。
 4. **安全切入**：选择 Faster cutter · benign，再点击 Run simulation。
    gap 仍为 20 m，相对速度为 −2 m/s；两侧全程保持 15 m/s、没有刹车，TTC 显示 —。
    结束时首刹为 Not triggered，提前量不可计算。
-5. **碰撞展示**：设 gap=10 m、rel_v=4 m/s，其余保持默认，重新运行。
+5. **碰撞展示**：设 gap=14 m、rel_v=4 m/s，其余保持默认，重新运行。
    结果应如实报告 Reactive 碰撞。发生碰撞的一侧应标为 COLLISION · FROZEN，并停在首次接触时刻；另一侧继续播放。
 6. **交互一致性**：测试暂停、重播、逐帧、0.5×/2×、预测线开关。
    两边始终使用同一时钟；改变播放速度不改变结果。修改参数后，旧结果保持不变，
@@ -127,7 +129,7 @@ PYTHONPATH="$PWD/src" python -m pytest -q -k 'not test_load_toy_excludes_ego_and
 
 ## 建议演示顺序
 
-先播放标准场景；暂停到 1.7 s，解释“CV 看见横向趋势，Reactive 此时仍忽略车道外目标”；
+先播放标准场景；暂停到 1.1 s，解释“CV 看见横向趋势，Reactive 此时仍忽略车道外目标”；
 逐帧到 2.0 s；播放到结束比较首刹时间。再运行 Faster cutter，说明系统不会仅因为旁车切入
 就必然刹车。最后说明结果来自合成二维闭环模型，2.5D 只负责展示。
 
@@ -141,7 +143,7 @@ PYTHONPATH="$PWD/src" python -m pytest -q -k 'not test_load_toy_excludes_ego_and
 终点复制的 action 不参与统计。这些是策略指令统计，不是物理踏板次数；车辆停住时
 仍保持 BRAKE 的时段也计入指令时间。
 
-默认标准场景 Reactive 为 3 次、CV 为 5 次；两侧累计指令时间均约 0.80 s。
+默认标准场景 Reactive 为 2 次、CV 为 4 次；两侧累计指令时间均约 0.80 s。
 安全切入预设两侧都是 0 次、0 s。重播不会累加新次数，拖回时间轴会恢复当时的计数。
 计数和持续时间测试可运行：
 
@@ -163,7 +165,7 @@ relative speed = ego 纵向速度 − agent 纵向速度；值越大表示本车
 
 两侧均使用现有 `HysteresisPolicy(2.0, 3.0)`，每次独立仿真创建独立策略实例。
 巡航时 TTC < 2.0 s 才开始刹车；刹车时 TTC > 3.0 s 才解除；等于阈值保持原状态。
-原 `TTCThresholdPolicy` 保留供其他基线实验使用，Demo 已不调用它。
+单阈值 `TTCThresholdPolicy` 用于 [L1 历史复现](l1-validation.md)。
 迟滞不能保证只刹一次：CV 预测冲突消失时 TTC 为无穷大，也会解除刹车，之后可能再触发。
 
 
@@ -175,7 +177,7 @@ relative speed = ego 纵向速度 − agent 纵向速度；值越大表示本车
 首次刹车尚未发生时不提前显示未来时刻。速度图的两种颜色虚线竖标记表示首次刹车。
 
 首次接触来自 `SimLog.first_collision_t`，使用与原碰撞判定相同的分段线性扫掠，
-包含采样帧之间的碰撞；时间是进入严格距离阈值的边界时刻，属于 ≤0.01 s 分段近似。
+包含采样帧之间的碰撞；时间是两车矩形开始发生面积重叠的边界时刻，属于 ≤0.01 s 分段近似。
 绘图位置在 0.1 s 状态间插值，碰撞帧位置有相应插值误差。
 基础模拟器仍完成全程，保持原实验行为；新增元数据没有引入撞击或碰后车辆动力学。
 网页的摘要、刹车次数、指令时间和事件记录截止到各侧首次接触或 10 s；
@@ -203,6 +205,8 @@ result = simulate(params, assessor_factory=factory)
 
 ## 252 组条件对比
 
+已有的圆形模型产物仅供历史对照。执行下方命令会用当前 Demo 的矩形配置生成结果。
+
 ```bash
 python experiments/exp06_demo_comparison.py
 ```
@@ -217,7 +221,7 @@ Pareto比较（容差分别0.10 m、0次、0.05 s），互有优劣就标为权�
 
 新增预设 5 m gap · slow merge 为 gap=5、relative speed=1、start=0.5、lc_T=5；
 可观察 Reactive 先冻结、CV 继续行驶。5 m gap · faster merge 将 lc_T 改为3，
-两侧均未碰撞，而 Reactive 刹车次数更少。完整对比条件见生成表格。
+两侧都发生碰撞。完整对比条件见生成表格。
 
 新增接口和接触时间验证：
 
@@ -233,7 +237,7 @@ PYTHONPATH="$PWD/src" python -m pytest tests/test_demo_extensions.py tests/test_
   版本选择不会改变场景、assessor 或迟滞阈值。增强版不增加新的结果判优逻辑。
 
 增强版使用更紧凑的道路取景和更大的指标文字，车辆图形依旧按相同世界尺度绘制，
-不会为了放大车辆而更改碰撞半径。旁车标签在车上方，本车标签在车下方，降低遮挡。
+两版都从仿真配置读取矩形长宽。旁车标签在车上方，本车标签在车下方，降低遮挡。
 车间浅色虚线连接当前显示位置，关联到上方的当前评估 TTC 标注；橙色虚线仍是未来预测轨迹。
 TTC 数值来自记录的 assessor 输出，不是前端用距离/速度另算。Reactive 尚未考虑目标时显示
 Outside ego lane · not assessed；没有预测冲突时显示 No assessed conflict；碰撞后显示接触时间。
@@ -243,13 +247,12 @@ Outside ego lane · not assessed；没有预测冲突时显示 No assessed confl
 
 1. 选择预设或在默认展开的 Adjust parameters 修改参数，然后点击 Run simulation。两版都明确提醒此步骤，
    不会在改动滑块后静默替换正在观看的旧结果。
-2. 选择播放区的 Pause at key events，点击 Play；标准场景自动在 1.70 s 的 CV 首刹暂停。
+2. 选择播放区的 Pause at key events，点击 Play；标准场景自动在 1.10 s 的 CV 首刹暂停。
    此时右侧显示 Assessed TTC 1.90 s，左侧显示目标尚未纳入评估。
 3. 再点 Play，在 2.00 s 的 Reactive 首刹暂停；继续播放不会再次卡在同一个事件。
 4. Previous/Next event 或各事件按钮可以直接跳转并暂停。缺少相应事件时按钮置灰。
    同刻发生的事件合并到一次暂停，文本同时列出。拖回过去后再次播放可以重新经过事件。
-5. 使用 5 m gap · slow merge 预设，可依次停在 CV 首刹 1.70 s、Reactive 首刹 3.00 s、
-   Reactive 接触约3.12 s。接触暂停用于讲解，继续播放后只有 CV 动画继续，碰撞侧保持冻结。
+5. 使用 5 m gap · slow merge 预设，可依次停在 CV 首刹 1.50 s、Reactive 接触约 2.41 s。接触暂停用于讲解，继续播放后只有 CV 动画继续，碰撞侧保持冻结。
 6. 选择 Full process 后，可像原版一样连续播放。选择 Faster cutter · benign，所有刹车/碰撞按钮
    均显示 none；正常播放不受影响。
 

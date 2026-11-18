@@ -99,7 +99,8 @@ def marker_kwargs(benign: bool) -> dict:
 def never_brake_log(scenario):
     """Ego keeps its speed for the whole horizon (the no-AEB reference)."""
     return run_sim(
-        scenario, NullAssessor(), NeverBrakePolicy(), duration=scenario.params["duration"]
+        scenario, NullAssessor(), NeverBrakePolicy(), duration=scenario.params["duration"],
+        r_safe=R_SAFE,
     )
 
 

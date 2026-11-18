@@ -27,7 +27,7 @@ def test_first_collision_is_earliest_across_agents_and_does_not_change_physics()
     near = replace(scenario.agents[0], x=np.full_like(scenario.agents[0].x, 20), agent_id="near")
     scenario.agents.append(near)
     log = run_sim(scenario, NullAssessor(), NeverBrakePolicy())
-    assert log.first_collision_t == pytest.approx((20 - 2.5) / 15)
+    assert log.first_collision_t == pytest.approx((20 - 5.0) / 15)
     assert log.collision
     assert log.ego_x[-1] == pytest.approx(
         150
@@ -46,22 +46,27 @@ def test_initial_overlap_records_zero_and_safe_run_has_no_collision_time():
 
 
 def test_reactive_contact_does_not_freeze_other_side_or_include_later_braking():
-    result = simulate({"gap_d": 10, "rel_v": 4})
+    result = simulate({"gap_d": 14, "rel_v": 4})
     reactive, cv = (result["systems"][n] for n in ("reactive", "cv"))
-    assert 2 < reactive["first_collision_t"] < 2.1
+    assert 2.2 < reactive["first_collision_t"] < 2.3
     assert reactive["summary"]["metrics_until_t"] == reactive["first_collision_t"]
     assert reactive["summary"]["brake_duration_s"] == pytest.approx(
         reactive["first_collision_t"] - 2
     )
     assert reactive["braking"]["episodes"][-1]["release_t"] is None
-    assert reactive["summary"]["min_dist"] == pytest.approx(2.5)
+    # Measure to the vehicle centres at actual contact, including lateral separation.
+    contact = reactive["first_collision_t"]
+    agent = result["agents"][0]
+    ex = np.interp(contact, result["t"], reactive["x"])
+    ax, ay = (np.interp(contact, agent["t"], agent[key]) for key in ("x", "y"))
+    assert reactive["summary"]["min_dist"] == pytest.approx(np.hypot(ex - ax, ay), abs=0.01)
     assert cv["first_collision_t"] is None
     assert cv["summary"]["metrics_until_t"] == 10
 
 
 def test_gap_five_is_supported_and_assessor_can_be_replaced_without_ui_changes():
     result = simulate({"gap_d": 5, "rel_v": 1})
-    assert all(not s["summary"]["collision"] for s in result["systems"].values())
+    assert all(s["summary"]["collision"] for s in result["systems"].values())
     calls = []
 
     def custom(name):
@@ -108,15 +113,10 @@ def test_five_metre_comparison_cases_reproduce_the_requested_table():
     cases = {
         duration: simulate({"gap_d": 5, "rel_v": 1, "lc_T": duration}) for duration in (3, 4, 5)
     }
-    faster = cases[3]["systems"]
-    assert all(not side["summary"]["collision"] for side in faster.values())
-    assert faster["reactive"]["summary"]["brake_count"] < faster["cv"]["summary"]["brake_count"]
-    medium = cases[4]["systems"]
-    assert medium["cv"]["summary"]["min_dist"] > medium["reactive"]["summary"]["min_dist"]
-    assert (
-        medium["cv"]["summary"]["brake_duration_s"]
-        < medium["reactive"]["summary"]["brake_duration_s"]
-    )
+    for duration in (3, 4):
+        sides = cases[duration]["systems"]
+        assert all(side["summary"]["collision"] for side in sides.values())
+        assert sides["reactive"]["first_collision_t"] < sides["cv"]["first_collision_t"]
     slow = cases[5]["systems"]
     assert slow["reactive"]["summary"]["collision"]
     assert not slow["cv"]["summary"]["collision"]

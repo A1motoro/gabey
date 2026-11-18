@@ -8,7 +8,13 @@ Ego is simulated (reacts to braking); agents are log-replayed (do not react).
 import numpy as np
 
 from pbs.risk.assessors import RiskAssessor
-from pbs.sim.collision import R_SAFE, in_collision, swept_contact_fraction, swept_min_distance
+from pbs.sim.collision import (
+    VEHICLE_LENGTH,
+    VEHICLE_WIDTH,
+    in_collision,
+    swept_contact_fraction,
+    swept_min_distance,
+)
 from pbs.sim.observation import ObservationModel
 from pbs.sim.policy import BRAKE, CRUISE
 from pbs.sim.timing import ComputationDelayModel
@@ -33,11 +39,13 @@ def advance_motion(v: float, a_brake: float, dt: float, action: str) -> tuple[fl
 def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brake):
     """Reject inputs that would otherwise silently clamp paths or replay endpoints."""
     dt = scenario.dt
-    values = (dt, duration, r_safe, latency, collision_dt, a_brake, scenario.lane_width)
+    values = (dt, duration, latency, collision_dt, a_brake, scenario.lane_width)
     if not np.all(np.isfinite(values)):
         raise ValueError("Simulation parameters must be finite.")
-    if min(dt, r_safe, collision_dt, a_brake, scenario.lane_width) <= 0:
-        raise ValueError("dt, r_safe, collision_dt, a_brake and lane_width must be positive.")
+    if min(dt, collision_dt, a_brake, scenario.lane_width) <= 0:
+        raise ValueError("dt, collision_dt, a_brake and lane_width must be positive.")
+    if r_safe is not None and (not np.isfinite(r_safe) or r_safe <= 0):
+        raise ValueError("r_safe must be finite and positive in legacy circle mode.")
     if duration < 0 or latency < 0:
         raise ValueError("duration and latency must be nonnegative.")
     if not isinstance(horizon, (int, np.integer)) or isinstance(horizon, bool) or horizon < 1:
@@ -95,7 +103,7 @@ def run_sim(
     policy,
     duration: float = 10.0,
     horizon: int = 30,
-    r_safe: float = R_SAFE,
+    r_safe: float | None = None,
     latency: float = 0.0,
     collision_dt: float = 0.01,
     *,
@@ -124,6 +132,15 @@ def run_sim(
         [[0.0], np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
     )
 
+    path_delta = np.diff(path, axis=0)
+    path_angles = np.arctan2(path_delta[:, 1], path_delta[:, 0])
+    agent_angles = {a.agent_id: np.unwrap(a.heading) for a in scenario.agents}
+    broad_limit = r_safe if r_safe is not None else np.hypot(VEHICLE_LENGTH, VEHICLE_WIDTH)
+
+    def headings_at(arcs):
+        indices = np.searchsorted(path_distances, arcs, side="right") - 1
+        return path_angles[np.clip(indices, 0, len(path_angles) - 1)]
+
     ego_x, ego_y, ego_v, ego_a = (np.zeros(n) for _ in range(4))
     ttc = np.full(n, np.inf)
     action: list[str] = []
@@ -131,13 +148,17 @@ def run_sim(
     s, v = 0.0, float(scenario.ego_start[3])  # arc length along ego_path, speed
     min_dist, collision = np.inf, False
     first_collision_t = None
+    min_until_contact = np.inf
 
     for k in range(n):
         if computation_delay_model is not None and k < steps:
             delay = computation_delay_model.delay_seconds(t_now=float(t[k]))
-            if (isinstance(delay, bool)
-                    or not isinstance(delay, int | float | np.integer | np.floating)
-                    or not np.isfinite(delay) or delay < 0):
+            if (
+                isinstance(delay, bool)
+                or not isinstance(delay, int | float | np.integer | np.floating)
+                or not np.isfinite(delay)
+                or delay < 0
+            ):
                 raise ValueError("Computation delay must be finite and nonnegative seconds.")
             if delay != 0:
                 raise NotImplementedError(
@@ -157,12 +178,21 @@ def run_sim(
             horizon=horizon,
             dt=dt,
             r_safe=r_safe,
+            ego_future_heading=headings_at(s + v * dt * np.arange(1, horizon + 1)),
         )
         for agent in scenario.agents:
             true_xy = state_at(agent, t[k])
             min_dist = min(min_dist, float(np.linalg.norm(ego_xy - true_xy)))
-            collision |= in_collision(ego_xy, true_xy, r_safe)
-            if in_collision(ego_xy, true_xy, r_safe) and first_collision_t is None:
+            overlap = in_collision(
+                ego_xy,
+                true_xy,
+                r_safe,
+                ego_heading=ctx.ego_heading,
+                agent_heading=np.interp(t[k], agent.t, agent_angles[agent.agent_id]),
+                pedestrian=agent.agent_type == "pedestrian",
+            )
+            collision |= overlap
+            if overlap and first_collision_t is None:
                 first_collision_t = float(t[k])
             history = history_until(agent, t[k] - latency)
             if not len(history.t):
@@ -178,6 +208,8 @@ def run_sim(
                     raise ValueError(f"Invalid TTC from assessor for {agent.agent_id!r}.")
                 ttc[k] = min(ttc[k], est.ttc)
 
+        if first_collision_t is None or first_collision_t == t[k]:
+            min_until_contact = min(min_until_contact, min_dist)
         if k == steps:
             # Keep equal-length columns without asking policy to execute an extra action.
             action.append(action[-1] if action else CRUISE)
@@ -205,24 +237,59 @@ def run_sim(
                     )
                 else:
                     offsets.append(distance / v)
+        before_contact = first_collision_t is None
+        intervals = []
         for agent in scenario.agents:
             knots = agent.t[(agent.t > t[k]) & (agent.t < t[k + 1])] - t[k]
             times = np.unique(np.concatenate([offsets, knots]))
             positions = [path_point(path, s + advance_motion(v, a_brake, h, act)[0]) for h in times]
             truth = [state_at(agent, t[k] + h) for h in times]
+            mid = (times[:-1] + times[1:]) / 2
+            ego_headings = headings_at([s + advance_motion(v, a_brake, h, act)[0] for h in mid])
+            other_headings = np.interp(t[k] + mid, agent.t, agent_angles[agent.agent_id])
             for j in range(len(times) - 1):
                 distance = swept_min_distance(
                     positions[j], positions[j + 1], truth[j], truth[j + 1]
                 )
                 min_dist = min(min_dist, distance)
-                collision |= distance < r_safe
-                if distance < r_safe:
-                    fraction = swept_contact_fraction(
-                        positions[j], positions[j + 1], truth[j], truth[j + 1], r_safe
+                if before_contact:
+                    intervals.append(
+                        (
+                            times[j],
+                            times[j + 1],
+                            positions[j],
+                            positions[j + 1],
+                            truth[j],
+                            truth[j + 1],
+                            distance,
+                        )
                     )
+                if before_contact and distance <= broad_limit:
+                    fraction = swept_contact_fraction(
+                        positions[j],
+                        positions[j + 1],
+                        truth[j],
+                        truth[j + 1],
+                        r_safe,
+                        ego_heading=ego_headings[j],
+                        agent_heading=other_headings[j],
+                        pedestrian=agent.agent_type == "pedestrian",
+                    )
+                    if fraction is None:
+                        continue
+                    collision = True
                     contact = float(t[k] + times[j] + fraction * (times[j + 1] - times[j]))
                     if first_collision_t is None or contact < first_collision_t:
                         first_collision_t = contact
+        if before_contact and first_collision_t is not None:
+            cutoff = first_collision_t - t[k]
+            for start, end, p0, p1, q0, q1, distance in intervals:
+                if start >= cutoff:
+                    continue
+                if end > cutoff:
+                    f = (cutoff - start) / (end - start)
+                    distance = swept_min_distance(p0, p0 + f * (p1 - p0), q0, q0 + f * (q1 - q0))
+                min_until_contact = min(min_until_contact, distance)
         s += ds
         v = next_v
 
@@ -238,4 +305,5 @@ def run_sim(
         bool(collision),
         executed_steps=steps,
         first_collision_t=first_collision_t,
+        min_dist_until_contact=min_until_contact,
     )
