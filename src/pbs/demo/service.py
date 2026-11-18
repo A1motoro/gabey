@@ -6,7 +6,7 @@ from pbs.demo.assessors import AssessorFactory, RecordingAssessor, make_demo_ass
 from pbs.demo.scene import DEFAULTS, PRESETS, RANGES, SceneAdapter, SyntheticCutInAdapter
 from pbs.eval.counterfactual import is_benign
 from pbs.eval.metrics import brake_activity, evaluate
-from pbs.sim.collision import R_SAFE
+from pbs.sim.collision import VEHICLE_LENGTH, VEHICLE_WIDTH
 from pbs.sim.policy import HysteresisPolicy
 from pbs.sim.simulator import run_sim
 from pbs.utils import path_heading, state_at
@@ -30,7 +30,8 @@ def get_config():
             "t_on": 2.0,
             "t_off": 3.0,
             "a_brake": 6,
-            "r_safe": R_SAFE,
+            "vehicle_length_m": VEHICLE_LENGTH,
+            "vehicle_width_m": VEHICLE_WIDTH,
         },
     }
 
@@ -143,14 +144,7 @@ def simulate(
                 brake_count=len(clipped),
                 brake_duration_s=activity["total_duration_s"],
                 brake_onset_t=clipped[0]["start_t"] if clipped else None,
-                min_dist=min(
-                    [R_SAFE]
-                    + [
-                        d
-                        for t, d in zip(log.t, distances, strict=True)
-                        if t <= contact and d is not None
-                    ]
-                ),
+                min_dist=log.min_dist_until_contact,
                 false_brake=bool(benign and clipped),
                 metrics_until_t=contact,
             )

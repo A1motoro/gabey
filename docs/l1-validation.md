@@ -1,5 +1,7 @@
 # P 的 L1 基线验证（2026-10-09）
 
+> 本页是 L1 复现记录。对应脚本显式使用单阈值与圆形判定。后续闭环配置见 [L2 基线规范](l2-baseline.md)。
+
 本轮完成 P 的 L1：二维 CV、首次冲突 TTC、Reactive/Predictive assessor，
 以及 CV ADE/FDE 与同一 cut-in 的刹车时间对照。范围以用户确认和 [README](../README.md)
 为准。A 的场景 API、C 的仿真模块、D 的实验矩阵未作实现改动；CA、CTRV、Oracle 留待 L2，LR 留待 L3。

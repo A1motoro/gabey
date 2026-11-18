@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from pbs.demo.service import simulate  # noqa: E402
+from pbs.sim.collision import VEHICLE_LENGTH, VEHICLE_WIDTH  # noqa: E402
 
 GRID = {
     "gap_d": [5, 10, 15, 20, 30, 40],
@@ -110,7 +111,8 @@ def main():
             "prediction_horizon_s": 3,
             "ego_speed_mps": 15,
             "a_brake": 6,
-            "r_safe_m": 2.5,
+            "vehicle_length_m": VEHICLE_LENGTH,
+            "vehicle_width_m": VEHICLE_WIDTH,
             "policy": "HysteresisPolicy: enter <2, release >3; equality holds",
         },
     }
@@ -121,7 +123,7 @@ def main():
         "全网格预先固定，共 252 组，无噪声和延迟。",
         "",
         "两边固定：本车 15 m/s，10 s 仿真，dt=0.1 "
-        "s，预测 3 s，减速度 6 m/s²，r_safe=2.5"
+        "s，预测 3 s，减速度 6 m/s²，车身长 5、宽 2.5"
         " m；迟滞 <2 s 刹车、>3 s 释放。",
         "",
         "比较顺序：只有一方碰撞时，未碰撞者占优；两方都碰撞则都失败，不用碰后轨迹判断优劣。",
@@ -134,7 +136,7 @@ def main():
         "误刹定义：同一场景不刹车、在相同 10 s 内也不碰撞，则其中任何一次刹车视作误刹。",
         "",
         "网页和 CSV 均在每侧首次接触时截止制动统计；未碰撞者统计至 10 s。"
-        "最小中心距在初次接触通常为 2.5 m；这不是碰后距离，也不表示车辆停止的真实动力学。"
+        "最小中心距统计至首次接触，接触距离取决于两车的相对位置与朝向。"
         "首次接触时间基于 ≤0.01 s 分段线性扫掠。",
         "",
         "| 分类 | 数量 |",

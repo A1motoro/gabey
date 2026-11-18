@@ -14,7 +14,7 @@
 | A | Persistent | 场景 | M1 `pbs.data` |
 | D | yj | 评估与实验 + 统筹 | M4 `pbs.eval`、`pbs.systems` |
 
-完整方案见 [docs/spec.md](docs/spec.md)（当前 v2；模块分工与排期见 §2、§4、§5）。
+完整方案见 [docs/spec.md](docs/spec.md)（当前 v2；模块分工与排期见 §2、§4、§5）。 后续闭环实验使用 [L2 基线规范](docs/l2-baseline.md)中的滞回制动和定向矩形车身。
 
 ## Motivation
 
@@ -33,8 +33,8 @@ pip install -e .                   # 使 `import pbs` 可用
 pytest                             # smoke test
 python experiments/exp00_l1_baseline.py  # P 的 L1 验证（CV / TTC / Reactive）
 python experiments/exp00_scenarios.py    # A 的 M1 场景基线（96 个场景 + no-braking 判定）
-python experiments/exp02_threshold_sweep.py --quick   # D 的 L2：碰撞率–误报率
-python experiments/exp03_failure_boundary.py --quick  # D 的 L2：四条 failure boundary
+python experiments/exp02_threshold_sweep.py --quick   # D：旧配置的碰撞率–误报率
+python experiments/exp03_failure_boundary.py --quick  # D：旧配置的四条 failure boundary
 ```
 
 ### P 的 L1 基线验证
@@ -53,9 +53,13 @@ Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903
 验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
 产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块或
 D 的实验矩阵。CA、CTRV、Oracle 已在 L2 实现，LR 已在 P 的 L3 实现。
-D 的 L2 实验矩阵见 [docs/d-baseline.md](docs/d-baseline.md) §9：`exp02`、`exp03`、`exp05` 已支持 `--quick`，
-`exp04` 仍是 L3。场景由 A 的 `make_scenario` / `scenario_set` 生成，exp02 另加 6 个中止换道。
+D 的已合入实验见 [docs/d-baseline.md](docs/d-baseline.md) §9。当前 `exp02`、`exp03`、`exp05` 的 `--quick` 使用原单阈值和圆形配置，待 D 对齐 L2 基线。
+`exp04` 属于 L3。场景由 A 的 `make_scenario` / `scenario_set` 生成，exp02 另加 6 个中止换道。
 测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
+
+### C 的 L2 闭环仿真
+
+在仓库根目录运行 `python experiments/c_l2_closed_loop.py`，复现 A 的 12 个 CA 切入场景与 P 的评估器闭环对比。配置见 [L2 基线规范](docs/l2-baseline.md)，结果见 [C 的 L2 仿真报告](docs/C_L2_closed_loop.md)。
 
 ### P 的 L2 预测器验证
 
@@ -118,7 +122,7 @@ python examples/cut_in_demo.py
 
 ## 核心概念
 
-- **TTC (time-to-collision)**：在预测时域内，ego 与 agent 距离首次小于 `r_safe` 的时间；无冲突为 `inf`。
+- **TTC (time-to-collision)**：在预测时域内，ego 与 agent 的预测车身首次发生面积重叠 的时间；无冲突为 `inf`。
 - **Reactive vs Predictive**：Reactive 只看本车道内目标的纵向接近；Predictive 外推所有目标的 2D（含横向）运动。两者之差 = 提前察觉切入的 **lead time**。
 - **Counterfactual false brake**：同一场景下若"永不刹车"也不会碰撞，则该场景 benign，其中任何刹车都是误报。
 - **Receding horizon**：每个仿真步都重新预测，不复用上一步结果。
@@ -142,9 +146,8 @@ A 的 M1 同时是 CA 的评测底座：`ca_scenario_set()`（12 个带纵向加
 
 ## 结果预览
 
-P 的 L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s；
-两者均未碰撞。该样例用于方法验证，不能据此推断所有场景的安全收益。
-曲线、参数与测试记录见 [L1 验证报告](docs/l1-validation.md)。
+P 的 L1 固定合成样例使用单阈值和圆形碰撞模型。Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s。两者均未碰撞。曲线、参数与测试记录见 [L1 验证报告](docs/l1-validation.md)。
+
 A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`outputs/figures/` 下得到三张图：
 
 | 文件 | 内容 |
@@ -157,7 +160,7 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 
 ## Limitations
 
-- 点质量 + 圆形 footprint，无车辆动力学；仅纵向控制，无 steering。
+- 点质量运动 + 随航向旋转的矩形车身（长 5.0 m、宽 2.5 m），无车辆动力学；仅纵向控制，无 steering。
 - 场景为合成构造（quintic 换道 + 横向加速度上限），非真实交通分布。
 - 无 perception：直接使用轨迹级数据。
 - 2D 简化。

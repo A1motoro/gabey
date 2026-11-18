@@ -56,6 +56,8 @@ class SimLog:
     # None preserves legacy logs whose terminal-action convention is unspecified.
     first_collision_t: float | None = None  # First contact under the swept linear approximation.
 
+    min_dist_until_contact: float | None = None  # Minimum centre distance through first contact.
+
 
 # ---- P ↔ C contract: risk assessment -------------------------------------------------
 
@@ -73,7 +75,8 @@ class RiskContext:
     lane_width: float
     horizon: int
     dt: float
-    r_safe: float  # 由 C 决定（footprint 近似），P 只读
+    r_safe: float | None = None  # Explicit value selects the historical circle model.
+    ego_future_heading: np.ndarray | None = None
 
 
 @dataclass

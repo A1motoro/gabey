@@ -16,8 +16,8 @@
 | 项 | 内容 |
 | --- | --- |
 | Baselines（三层） | **Reactive**（无预测）→ **Predictive**（CV / CA / CTRV / LR）→ **Oracle**（真实未来，上界） |
-| 决策 | TTC 阈值二值刹车 (cruise / brake) |
-| 仿真 | 2D 离散时间闭环；ego 自主仿真，agent log replay |
+| 决策 | 二值刹车（cruise / brake）。L1 历史实验用单阈值，L2 闭环基线用 [TTC 滞回制动](l2-baseline.md#制动与碰撞) |
+| 仿真 | 2D 离散时间闭环。ego 自主仿真，agent log replay。L1 历史实验使用圆形判定，L2 使用[定向矩形车身](l2-baseline.md#制动与碰撞) |
 | 场景 | 参数化合成：`cut_in`（quintic 换道 + 横向加速度约束）、`lead_brake`、`crossing`；**必须含 benign 样本** |
 | 评估 | ADE/FDE、碰撞率、counterfactual 误报率、最小间距、刹车时机、cut-in **lead time** |
 | 核心图 | Reactive / CV / CA / Oracle 四条 failure boundary 叠加在 (gap_d, rel_v) 平面 |
@@ -25,7 +25,7 @@
 
 ### 1.2 Out of scope
 
-CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Transformer；3D 与车辆动力学（点质量 + 圆形 footprint）。nuScenes mini 仅作可选增强，优先级低于场景物理合理性。
+CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Transformer；3D 与车辆动力学（采用二维点质量运动和简化碰撞几何）。nuScenes mini 仅作可选增强，优先级低于场景物理合理性。
 
 ### 1.3 分层交付 (fallback ladder)
 
@@ -67,7 +67,7 @@ CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Trans
 
 ## 3. 实验矩阵 (M4)
 
-`systems × kind × param grid × ttc_threshold [× latency]`，一次运行一行 DataFrame，其余全部是 groupby。
+闭环实验以 [L2 基线规范](l2-baseline.md) 为准。每次运行记录系统、场景参数、滞回进入与退出阈值、时域、延迟和碰撞几何。阈值扫描在输出中记录实际的阈值对。碰撞前间距与首次接触时间按规范里的日志字段导出。
 
 | 实验 | 系统 | 输出 |
 | --- | --- | --- |
