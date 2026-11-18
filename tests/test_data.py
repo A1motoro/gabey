@@ -12,12 +12,14 @@ from pbs.data import (
     DT,
     KINDS,
     LANE_WIDTH,
+    ca_scenario_set,
     canonical,
     load_toy,
     load_toy_ego,
     make_scenario,
     min_lc_duration,
     peak_lateral_acc,
+    prediction_slices,
     quintic_lateral,
     quintic_lateral_acc,
     quintic_lateral_vel,
@@ -27,6 +29,7 @@ from pbs.data import (
 from pbs.eval.counterfactual import is_benign
 from pbs.sim.collision import R_SAFE
 from pbs.types import Scenario, Trajectory
+from pbs.utils import history_until, state_at
 
 
 # --------------------------------------------------------------------------------------
@@ -259,3 +262,116 @@ def test_contact_distance_is_not_already_violated_at_t_zero():
     for scenario in scenario_set().scenarios:
         agent = scenario.agents[0]
         assert np.hypot(agent.x[0], agent.y[0]) > R_SAFE
+
+
+# --------------------------------------------------------------------------------------
+# ground-truth acceleration and the CA slice (M2 support)
+# --------------------------------------------------------------------------------------
+def test_ground_truth_acceleration_of_every_family():
+    """Synthetic scenes carry analytic (a_x, a_y); predictors may only use it for tests."""
+    for scenario in scenario_set().scenarios:
+        agent = scenario.agents[0]
+        assert agent.accel is not None, scenario.kind
+        assert agent.accel.shape == (len(agent.t), 2)
+        assert np.all(np.isfinite(agent.accel))
+
+    lead = make_scenario("lead_brake", init_gap=30.0, decel=4.0, t_brake=1.0).agents[0]
+    k = int(round(1.0 / DT))
+    assert np.allclose(lead.accel[: k + 1, 0], 0.0)
+    braking = (lead.t > 1.0) & (lead.v > 0)
+    assert np.allclose(lead.accel[braking, 0], -4.0)
+    assert np.allclose(lead.accel[lead.v == 0, 0], 0.0)  # no reverse acceleration
+
+    crossing = make_scenario("crossing").agents[0]
+    np.testing.assert_allclose(crossing.accel, 0.0)
+
+
+def test_cut_in_ground_truth_lateral_acceleration_matches_the_quintic():
+    agent = make_scenario("cut_in", gap_d=25.0, rel_v=2.0).agents[0]
+    expected = quintic_lateral_acc(LANE_WIDTH, 0.0, 3.0, agent.t, t0=0.5)
+    np.testing.assert_allclose(agent.accel[:, 1], expected, atol=1e-12)
+
+
+def test_cut_in_acceleration_is_zero_by_default():
+    """Backward compatibility: a_cutter = 0 must reproduce the old constant-speed cutter."""
+    sc = make_scenario("cut_in", gap_d=25.0, rel_v=2.0)
+    agent = sc.agents[0]
+    assert sc.params["a_cutter"] == 0.0
+    np.testing.assert_allclose(agent.accel[:, 0], 0.0)
+    np.testing.assert_allclose(np.diff(agent.x), (15.0 - 2.0) * DT)
+
+
+def test_cut_in_longitudinal_acceleration_ramps_inside_the_merge_window():
+    sc = make_scenario("cut_in", gap_d=25.0, rel_v=2.0, a_cutter=2.0, accel_T=2.0)
+    agent = sc.agents[0]
+    v0, t0, a, window = 13.0, 0.5, 2.0, 2.0
+
+    k_in = int(round(1.5 / DT))  # inside the ramp
+    k_after = int(round(4.0 / DT))  # after the ramp, lane change finished
+    assert agent.accel[k_in, 0] == pytest.approx(a)
+    assert agent.accel[k_after, 0] == pytest.approx(0.0)
+    assert agent.v[k_after] == pytest.approx(v0 + a * window)
+
+    t_end = 5.0  # after both the ramp and the lane change, so v = v_x
+    x_expected = (
+        25.0
+        + v0 * t_end
+        + 0.5 * a * window**2
+        + a * window * (t_end - t0 - window)
+    )
+    assert agent.x[int(round(t_end / DT))] == pytest.approx(x_expected, abs=1e-9)
+    assert agent.v[int(round(t_end / DT))] == pytest.approx(v0 + a * window)
+
+
+def test_cut_in_rejects_reversing_or_unphysical_longitudinal_acceleration():
+    with pytest.raises(ValueError, match="reverse"):
+        make_scenario("cut_in", rel_v=2.0, a_cutter=-3.0, accel_T=5.0)  # 13 − 15 < 0
+    with pytest.raises(ValueError, match="longitudinal bound"):
+        make_scenario("cut_in", a_cutter=4.0)
+
+
+def test_ca_slice_builds_and_keeps_both_classes():
+    built = ca_scenario_set()
+    assert built.n_built == 12
+    assert built.n_rejected == 0
+    assert {sc.params["a_cutter"] for sc in built.scenarios} == {-2.0, 0.0, 2.0}
+    benign = [sc for sc in built.scenarios if is_benign(sc, duration=sc.params["duration"])]
+    assert 0 < len(benign) < len(built.scenarios)
+
+
+def test_history_slices_carry_ground_truth_acceleration():
+    agent = make_scenario("cut_in", a_cutter=2.0).agents[0]
+    hist = history_until(agent, 1.0)
+    assert hist.accel is not None
+    assert hist.accel.shape == (len(hist.t), 2)
+    assert hist.t[-1] == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------------------
+# prediction benchmark slices
+# --------------------------------------------------------------------------------------
+def test_prediction_slices_cover_the_clip_without_leakage():
+    sc = make_scenario("cut_in", gap_d=25.0, rel_v=2.0, a_cutter=2.0)
+    slices = prediction_slices(sc, history=1.0, horizon=2.0, stride=0.5)
+    assert len(slices) == 25
+    assert slices[0].t0 == pytest.approx(1.0)
+    assert slices[-1].t0 == pytest.approx(13.0)
+
+    agent = sc.agents[0]
+    for slc in slices:
+        assert slc.history.t[-1] == pytest.approx(slc.t0)  # nothing from the future
+        assert np.all(slc.history.t <= slc.t0 + 1e-9)
+        assert slc.truth.shape == (20, 2)
+        assert slc.truth_accel is not None and slc.truth_accel.shape == (20, 2)
+
+    probe = slices[3]
+    np.testing.assert_allclose(probe.truth[0], state_at(agent, probe.t0 + DT))
+    np.testing.assert_allclose(probe.truth[-1], state_at(agent, probe.t0 + 2.0))
+
+
+def test_prediction_slices_reject_non_step_windows():
+    sc = make_scenario("cut_in")
+    with pytest.raises(ValueError, match="not a positive multiple"):
+        prediction_slices(sc, stride=0.15)
+    with pytest.raises(ValueError, match="does not fit"):
+        prediction_slices(sc, history=1.0, horizon=20.0)

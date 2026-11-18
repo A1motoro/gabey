@@ -73,9 +73,15 @@ CSV_COLUMNS = (
     "benign",
     "collision",
     "min_dist",
+    "min_dist_coarse",
+    "margin",
+    "marginal",
+    "contact_t",
     "t_min_dist",
     "t_contact_analytic",
 )
+
+MARGINAL_BAND = 0.05  # m; |min_dist − r_safe| below this is a knife-edge label
 
 DANGER = dict(marker="x", color="tab:red", s=28, label="dangerous (collides)")
 BENIGN = dict(marker="o", color="tab:green", s=22, facecolors="none", linewidths=1.0,
@@ -105,6 +111,31 @@ def distance_series(scenario, log) -> np.ndarray:
     return np.hypot(log.ego_x - ax, log.ego_y - ay)
 
 
+def fine_distance_curve(scenario, log, step: float = 0.01):
+    """Ego ↔ agent centre distance on a fine time grid, for plotting the contact point.
+
+    ``run_sim`` decides ``collision`` on a ``collision_dt = 0.01 s`` sweep, so contact can
+    happen between two 0.1 s log samples (observed: a crossing entering r_safe by 1.2 cm).
+    Ego positions between log samples are linearly interpolated — error ≲ 1 cm at
+    a_brake = 6 m/s², fine for a marker.
+    """
+    t = np.arange(0.0, log.t[-1] + 0.5 * step, step)
+    agent = scenario.agents[0]
+    ax = np.interp(t, agent.t, agent.x)
+    ay = np.interp(t, agent.t, agent.y)
+    ex = np.interp(t, log.t, log.ego_x)
+    ey = np.interp(t, log.t, log.ego_y)
+    return t, np.hypot(ex - ax, ey - ay)
+
+
+def contact_marker(scenario, log):
+    """(t, d, inside) at the first fine crossing of r_safe, else the closest approach."""
+    t, dist = fine_distance_curve(scenario, log)
+    inside = dist < R_SAFE
+    k = int(np.argmax(inside)) if inside.any() else int(np.argmin(dist))
+    return float(t[k]), float(dist[k]), bool(inside[k])
+
+
 def analytic_contact_time(scenario) -> float:
     """Closed-form contact time where one exists, else ``nan``.
 
@@ -124,18 +155,31 @@ def analytic_contact_time(scenario) -> float:
 
 
 def audit(scenario) -> dict:
-    """One table row: is it benign, and how close does the no-braking ego get?"""
+    """One table row: is it benign, and how close does the no-braking ego get?
+
+    ``min_dist`` is the value that actually decides ``collision`` (0.01 s sweep inside
+    ``run_sim``); ``min_dist_coarse`` is the 0.1 s grid value that older docs quoted.
+    Reading the coarse column against ``r_safe`` can therefore contradict the verdict.
+    """
     log = never_brake_log(scenario)
-    dist = distance_series(scenario, log)
-    k = int(np.argmin(dist))
+    coarse = distance_series(scenario, log)
+    t_fine, d_fine = fine_distance_curve(scenario, log)
+    k = int(np.argmin(d_fine))
+    min_dist = float(log.min_dist)
+    margin = min_dist - R_SAFE
+    below = d_fine < R_SAFE
     row = {
         "kind": scenario.kind,
         "label": scenario_label(scenario),
         "v_ego": scenario.params.get("v_ego", float("nan")),
         "benign": not log.collision,
         "collision": bool(log.collision),
-        "min_dist": float(dist[k]),
-        "t_min_dist": float(log.t[k]),
+        "min_dist": min_dist,
+        "min_dist_coarse": float(coarse.min()),
+        "margin": margin,
+        "marginal": abs(margin) < MARGINAL_BAND,
+        "contact_t": float(t_fine[int(np.argmax(below))]) if below.any() else float("nan"),
+        "t_min_dist": float(t_fine[k]),
         "t_contact_analytic": analytic_contact_time(scenario),
     }
     for key in CSV_COLUMNS:
@@ -202,11 +246,14 @@ def plot_geometry(cases: dict, path: Path) -> None:
     fig.colorbar(sca, ax=ax, pad=0.01, label="t [s]")
     ax.annotate("ego lane", xy=(3.0, 0.28), fontsize=8, color="0.35")
     ax.annotate("adjacent lane centre", xy=(3.0, LANE_WIDTH + 0.25), fontsize=8, color="0.5")
-    dist = distance_series(sc, log)
+    t_hit, d_hit, _ = contact_marker(sc, log)
     if log.collision:
-        k = int(np.argmax(dist < R_SAFE))
-        ax.plot(log.ego_x[k], log.ego_y[k], "r*", ms=16, zorder=6,
-                label=f"contact t={log.t[k]:.2f}s, d={dist[k]:.2f}m")
+        ax.plot(
+            float(np.interp(t_hit, log.t, log.ego_x)),
+            float(np.interp(t_hit, log.t, log.ego_y)),
+            "r*", ms=16, zorder=6,
+            label=f"contact t={t_hit:.2f}s, d={d_hit:.2f}m",
+        )
     ax.set_xlim(0.0, float(log.ego_x[-1]) * 0.62)
     ax.set_ylim(-4.4, 5.2)
     ax.set_xlabel("x [m]")
@@ -221,10 +268,12 @@ def plot_geometry(cases: dict, path: Path) -> None:
     agent = sc.agents[0]
     ax.plot(log.t, log.ego_x, color="tab:blue", lw=2.0, label="ego (never brakes)")
     ax.plot(agent.t, agent.x, color="tab:orange", lw=2.0, label="lead")
-    dist = distance_series(sc, log)
+    t_hit, d_hit, _ = contact_marker(sc, log)
     if log.collision:
-        k = int(np.argmax(dist < R_SAFE))
-        ax.plot(log.t[k], log.ego_x[k], "r*", ms=16, label=f"contact t={log.t[k]:.2f}s")
+        ax.plot(
+            t_hit, float(np.interp(t_hit, log.t, log.ego_x)), "r*", ms=16,
+            label=f"contact t={t_hit:.2f}s",
+        )
     ax.set_xlabel("t [s]")
     ax.set_ylabel("x [m]")
     ax.set_title("lead_brake — longitudinal conflict\n" + scenario_label(sc), fontsize=10)
@@ -240,10 +289,13 @@ def plot_geometry(cases: dict, path: Path) -> None:
     sca = ax.scatter(agent.x, agent.y, c=agent.t, cmap="viridis", s=12, zorder=3,
                      label="crossing agent")
     fig.colorbar(sca, ax=ax, pad=0.01, label="t [s]")
-    dist = distance_series(sc, log)
+    t_hit, d_hit, _ = contact_marker(sc, log)
     if log.collision:
-        k = int(np.argmax(dist < R_SAFE))
-        ax.plot(log.ego_x[k], log.ego_y[k], "r*", ms=16, label=f"contact t={log.t[k]:.2f}s")
+        ax.plot(
+            float(np.interp(t_hit, log.t, log.ego_x)),
+            float(np.interp(t_hit, log.t, log.ego_y)),
+            "r*", ms=16, label=f"contact t={t_hit:.2f}s, d={d_hit:.2f}m",
+        )
     ax.set_xlim(0.0, 60.0)
     ax.set_ylim(-4.4, 10.0)
     ax.set_xlabel("x [m]")
@@ -411,12 +463,23 @@ def write_summary(rows, rejection, cases, path: Path) -> None:
         )
     total = len(rows)
     benign_total = sum(1 for row in rows if row["benign"])
+    marginal = [row for row in rows if row.get("marginal")]
+    marginal_names = "、".join(f"`{row['label']}`" for row in marginal)
     lines += [
         f"| **合计** | **{total}** | **{total - benign_total}** | **{benign_total}** | "
         f"**{benign_total / total:.0%}** |",
         "",
         "> 每一类都**必须**同时有 benign 与 dangerous，否则 exp02/exp03 的误报率恒为 0、",
         "> trade-off 曲线画不出来。这条在 `tests/test_data.py` 里被断言守护。",
+        "",
+        "**判定的数值口径**：`min_dist` 取 `run_sim` 的 0.01 s 扫掠值（`collision` 就按它判），",
+        f"`min_dist_coarse` 是 0.1 s 网格值；CSV 的 `marginal` 列标出 "
+        f"`|min_dist − r_safe| < {MARGINAL_BAND * 100:.0f} cm` 的场景。",
+        f"本网格有 **{len(marginal)}** 个刀刃场景"
+        + (f"：{marginal_names}。" if marginal else "。"),
+        "这些点的标签会随时间分辨率或 `r_safe` 语义翻转，报告里应单列说明（或从主网格剔除）。",
+        "注意：碰撞后 ego 会**穿过** agent（不模拟冲击），所以危险的 `min_dist` 可以到 0.00；",
+        "负的 `margin` 是侵入深度，不是安全余量。首次接触时刻看 `contact_t`。",
         "",
         "## 3. quintic 横向加速度过滤（物理合理性）",
         "",
@@ -442,15 +505,17 @@ def write_summary(rows, rejection, cases, path: Path) -> None:
         "",
         "## 4. 命名场景（docs/scenarios.md 与测试共用）",
         "",
-        "| 名字 | 标签 | 不刹车最小中心距 [m] | 碰撞 | 判定 |",
-        "| --- | --- | --- | --- | --- |",
+        "| 名字 | 标签 | 最小中心距 [m] | margin [m] | 首次接触 t [s] | 碰撞 | 判定 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for name, scenario in cases.items():
         row = audit(scenario)
         verdict = "benign" if row["benign"] else "dangerous"
+        contact = "—" if not np.isfinite(row["contact_t"]) else f"{row['contact_t']:.2f}"
         lines.append(
             f"| `{name}` | `{scenario_label(scenario)}` | {row['min_dist']:.2f} | "
-            f"{'是' if row['collision'] else '否'} | {verdict} |"
+            f"{row['margin']:+.2f} | {contact} | {'是' if row['collision'] else '否'} | "
+            f"{verdict} |"
         )
     lines += [
         "",

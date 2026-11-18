@@ -40,7 +40,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| [`tests/test_data.py`](../tests/test_data.py) | 31 个测试：quintic 端点/C² 连续/峰值公式、三类场景几何、过滤拒绝、网格计数、每类必须既有 dangerous 又有 benign、loader 正确性 |
+| [`tests/test_data.py`](../tests/test_data.py) | 40 个测试：quintic 端点/C² 连续/峰值公式、三类场景几何、过滤拒绝、网格计数、每类必须既有 dangerous 又有 benign、loader 正确性、GT 加速度、CA 切片、`prediction_slices` 无泄漏 |
 
 ### 2.4 文档
 
@@ -70,7 +70,7 @@ outputs/logs/exp00_summary.md                 汇总表（本文档所有数字�
 
 ```powershell
 python experiments\exp00_scenarios.py      # 约 10 秒，重写上面 5 个产物
-python -m pytest tests -q                  # 38 passed, 6 skipped（6 个是 P 的 TODO）
+python -m pytest tests -q                  # 185 passed, 2 skipped（2 个是 CTRV/Oracle 的 TODO）
 ```
 
 预期输出：
@@ -79,7 +79,7 @@ python -m pytest tests -q                  # 38 passed, 6 skipped（6 个是 P �
 scenarios built : 96  (rejected 0)
   cut_in       60 scenarios |  27 dangerous |  33 benign
   lead_brake   20 scenarios |  16 dangerous |   4 benign
-  crossing     16 scenarios |   8 dangerous |   8 benign
+  crossing     16 scenarios |   9 dangerous |   7 benign
 rejection sensitivity (max_lat_acc -> accepted lc_T):
   2 m/s^2 -> 2/6  (min lc_T 3.18 s)
   3 m/s^2 -> 3/6  (min lc_T 2.60 s)
@@ -95,7 +95,7 @@ rejection sensitivity (max_lat_acc -> accepted lc_T):
 
 | 图 | 一句话 | 你要能指出来的细节 |
 | --- | --- | --- |
-| `exp00_scenario_geometry.png` | 三类冲突"长什么样" | 左：cutter 从 y=3.5 换到 y=0，红★是**不刹车时首次进入 r_safe=2.5 m** 的时刻（t=7.60 s，中心距 2.20 m）。中：前车在 t=1 s 开始 4 m/s² 刹停，红★=t 4.80 s 追尾。右：行人在 x=35 m 处横穿，红★=t 2.20 s 撞上。 |
+| `exp00_scenario_geometry.png` | 三类冲突"长什么样" | 左：cutter 从 y=3.5 换到 y=0，红★是**不刹车时首次进入 r_safe=2.5 m** 的时刻（t=7.51 s，中心距 2.47 m）。中：前车在 t=1 s 开始 4 m/s² 刹停，红★=t 4.71 s 接触。右：行人在 x=35 m 处横穿，红★=t 2.17 s 接触。 |
 | `exp00_lateral_accel.png` | 为什么"换道时长"不能随便取 | 左：quintic 的归一化 y/ẏ/ÿ；**ÿ 峰值 5.77**（=10/√3），在 τ=0.211。右：峰值横向加速度 ∝ 1/T²；3 m/s² 这条虚线把平面切成"可接受/太猛"，对应 `T_min=2.60 s`。 |
 | `exp00_danger_map.png` | 哪些参数组合"不刹车会撞" | 红叉=危险、绿圈=benign。左图虚线 = "target 已在本车道"的解析边界；实测危险区**比它略大**（因为接触时 target 还在换道中途）。中图 benign 区很小（纯纵向冲突，reactive AEB 的主场）。右图危险带在"同时到达"对角线附近。 |
 
@@ -121,6 +121,11 @@ make_scenario(kind, ...)    ConstantVelocity.predict()    run_sim(...)          
 3. `lane_width = 3.5` 同时是"本车道中心线间距"和**Reactive baseline 的过滤阈值**（`|偏移| < 1.75` 才算"在本车道"）。
 4. `agent_id` 唯一且稳定（`"cutter"` / `"lead"` / `"crosser"`），`OraclePredictor` 靠它取真实未来。
 
+给 P 做 CA 的两个新约定（2026-11-18 加）：
+
+5. `Trajectory.accel` 是 `(N, 2)` 的**解析真值加速度**（列 = a_x, a_y）。合成场景都有，`load_toy()` 为 `None`。**预测器只能拿它做验证/测试，不能在预测时读它**——否则就是偷看答案。
+6. `prediction_slices(scenario, history=1.0, horizon=2.0, stride=0.5)` 返回固定的 `(history, truth)` 切片：`history.t[-1] == t0`（无未来泄漏），`truth` 是 `t0 + k·dt, k = 1..H` 的真值位置。exp01 主曲线用它，别用 `load_toy()`。
+
 调用示例：
 
 ```python
@@ -142,7 +147,7 @@ make_scenario("cut_in", gap_d=25, rel_v=2, lc_T=1.5)   # ValueError: 峰值 8.98
 
 | 结论 | 证据 |
 | --- | --- |
-| 场景集 47% 是 benign；三类各含"看着危险、其实安全"的样本，因此误报率的分母非空 | `outputs/logs/exp00_summary.md` §2、§4 |
+| 场景集 46% 是 benign（52 dangerous / 44 benign）；三类各含"看着危险、其实安全"的样本，因此误报率的分母非空 | `outputs/logs/exp00_summary.md` §2、§4 |
 | 换道物理约束：`a_peak=(10/√3)|Δy|/T²`，3.5 m 车道下 3 s 换道 = 2.25 m/s²，最短 2.60 s | `exp00_lateral_accel.png`、`docs/scenarios.md` §4 |
 | 阈值 2.0/3.0/4.5 m/s² 下可接受的换道时长比例 2/6、3/6、4/6 —— 结论的敏感度可量化 | 脚本 stdout、`exp00_summary.md` §3 |
 | cut-in 的危险区比"target 已归位"的解析边界略大（接触发生在换道中途），所以边界必须仿真 | `exp00_danger_map.png` 左图 |

@@ -53,6 +53,7 @@ from pbs.types import Scenario, Trajectory
 KINDS = ("cut_in", "lead_brake", "crossing")
 
 MAX_LAT_ACC = 3.0  # m/s²; comfort/aggressive bound — sensitivity 2.0/3.0/4.5 in exp00
+MAX_LONG_ACC = 3.0  # m/s²; longitudinal comfort bound for the cut-in acceleration slice
 DT = 0.1  # s, frozen interface
 LANE_WIDTH = 3.5  # m, frozen interface
 DURATION = 15.0  # s, default horizon of one scenario
@@ -122,15 +123,31 @@ def _times(duration: float, dt: float = DT) -> np.ndarray:
 
 
 def _trajectory(
-    t: np.ndarray, x, y, vx, vy, agent_id: str, agent_type: str = "vehicle"
+    t: np.ndarray,
+    x,
+    y,
+    vx,
+    vy,
+    agent_id: str,
+    agent_type: str = "vehicle",
+    ax=None,
+    ay=None,
 ) -> Trajectory:
-    """Build a Trajectory from kinematic arrays (heading = atan2(vy, vx))."""
+    """Build a Trajectory from kinematic arrays (heading = atan2(vy, vx)).
+
+    ``ax``/``ay`` are the analytic ground-truth accelerations (same grid as ``t``).
+    They are stored in ``Trajectory.accel`` for M2 validation; predictors must still
+    estimate acceleration from observations, never read this field at test time.
+    """
     shape = np.shape(t)
 
     def _as_array(value) -> np.ndarray:
         return np.array(np.broadcast_to(np.asarray(value, dtype=float), shape))
 
     vx, vy = _as_array(vx), _as_array(vy)
+    accel = None
+    if ax is not None:
+        accel = np.column_stack((_as_array(ax), _as_array(0.0 if ay is None else ay)))
     return Trajectory(
         t=t,
         x=_as_array(x),
@@ -139,6 +156,7 @@ def _trajectory(
         heading=np.arctan2(vy, vx),
         agent_type=agent_type,
         agent_id=agent_id,
+        accel=accel,
     )
 
 
@@ -166,25 +184,46 @@ def _cut_in(
     cut_in_t: float = 0.5,
     lc_T: float = 3.0,
     *,
+    a_cutter: float = 0.0,
+    accel_T: float | None = None,
     v_ego: float = V_EGO,
     lane_width: float = LANE_WIDTH,
     duration: float = DURATION,
     dt: float = DT,
     from_left: bool = True,
     max_lat_acc: float = MAX_LAT_ACC,
+    max_lon_acc: float = MAX_LONG_ACC,
     agent_id: str = "cutter",
 ) -> Scenario:
     """Adjacent-lane vehicle merges into the ego lane ahead of the ego.
 
-    The cutter keeps its longitudinal speed ``v_ego − rel_v`` for the whole clip and only
-    its lateral position follows the quintic, so the conflict is purely lateral.
+    Lateral: quintic from the adjacent lane centre to ``y = 0`` over ``lc_T``, starting
+    at ``cut_in_t``. Longitudinal: constant speed ``v_ego − rel_v`` unless ``a_cutter``
+    is non-zero, in which case the speed ramps at ``a_cutter`` for ``accel_T`` seconds
+    (default: the lane-change window) and stays constant afterwards.
+
+    ``a_cutter`` is what makes the **constant-acceleration (CA)** predictor different
+    from CV on this family: with ``a_cutter = 0`` the two are identical along x.
     """
     _require(gap_d > 0, f"cut_in: gap_d must be > 0 m, got {gap_d}")
     _require(cut_in_t >= 0, f"cut_in: cut_in_t must be ≥ 0 s, got {cut_in_t}")
     _require(lc_T > 0, f"cut_in: lc_T must be > 0 s, got {lc_T}")
     _require(lane_width > 0, f"cut_in: lane_width must be > 0 m, got {lane_width}")
+    _require(
+        abs(a_cutter) <= max_lon_acc,
+        f"cut_in: |a_cutter|={abs(a_cutter):.2f} m/s² exceeds the {max_lon_acc:.2f} m/s² "
+        "longitudinal bound",
+    )
+    window = lc_T if accel_T is None else float(accel_T)
+    _require(window > 0, f"cut_in: accel_T must be > 0 s, got {window}")
     v_cut = v_ego - rel_v
     _require(v_cut >= 0, f"cut_in: rel_v={rel_v} exceeds v_ego={v_ego} (cutter would reverse)")
+    v_end = v_cut + a_cutter * window
+    _require(
+        v_end >= 0,
+        f"cut_in: a_cutter={a_cutter:g} m/s² over accel_T={window:.2f} s would make the "
+        f"cutter reverse ({v_cut:.2f} → {v_end:.2f} m/s); lower |a_cutter| or accel_T",
+    )
 
     y0 = lane_width if from_left else -lane_width  # start in the adjacent lane centre
     dy = -y0  # merge to the ego-lane centreline (y = 0)
@@ -198,13 +237,26 @@ def _cut_in(
     )
 
     t = _times(duration, dt)
-    x = gap_d + v_cut * t
+    # Longitudinal speed ramps only inside [cut_in_t, cut_in_t + window]:
+    #   v_x = v_cut + a·τ,  τ = clip(t − cut_in_t, 0, window)
+    #   x   = gap_d + v_cut·t + ½·a·τ² + a·window·max(t − cut_in_t − window, 0)
+    # The last term keeps the speed gained during the ramp after it ends.
+    tau = np.clip(t - cut_in_t, 0.0, window)
+    x = (
+        gap_d
+        + v_cut * t
+        + 0.5 * a_cutter * tau**2
+        + a_cutter * window * np.clip(t - cut_in_t - window, 0.0, None)
+    )
+    vx = v_cut + a_cutter * tau
     y = quintic_lateral(y0, 0.0, lc_T, t, t0=cut_in_t)
     vy = quintic_lateral_vel(y0, 0.0, lc_T, t, t0=cut_in_t)
+    ax = np.where((t >= cut_in_t) & (t <= cut_in_t + window), a_cutter, 0.0)
+    ay = quintic_lateral_acc(y0, 0.0, lc_T, t, t0=cut_in_t)
     return Scenario(
         ego_start=(0.0, 0.0, 0.0, float(v_ego)),
         ego_path=_ego_path(v_ego, duration),
-        agents=[_trajectory(t, x, y, v_cut, vy, agent_id)],
+        agents=[_trajectory(t, x, y, vx, vy, agent_id, ax=ax, ay=ay)],
         dt=dt,
         kind="cut_in",
         lane_width=float(lane_width),
@@ -213,8 +265,11 @@ def _cut_in(
             rel_v=rel_v,
             cut_in_t=cut_in_t,
             lc_T=lc_T,
+            a_cutter=a_cutter,
+            accel_T=window,
             v_ego=v_ego,
             v_cutter=v_cut,
+            v_cutter_end=v_end,
             peak_lat_acc=peak,
             from_left=from_left,
             duration=duration,
@@ -255,10 +310,12 @@ def _lead_brake(
         v_lead * t_brake + v_lead * tau_eff - 0.5 * decel * tau_eff**2,
     )
     x = init_gap + travelled
+    # GT acceleration: 0 while cruising, −decel while the lead is still moving, 0 once stopped.
+    ax = np.where((t > t_brake) & (v_lead_t > 0.0), -decel, 0.0)
     return Scenario(
         ego_start=(0.0, 0.0, 0.0, float(v_ego)),
         ego_path=_ego_path(v_ego, duration),
-        agents=[_trajectory(t, x, 0.0, v_lead_t, 0.0, agent_id)],
+        agents=[_trajectory(t, x, 0.0, v_lead_t, 0.0, agent_id, ax=ax, ay=0.0)],
         dt=dt,
         kind="lead_brake",
         lane_width=float(lane_width),
@@ -306,6 +363,8 @@ def _crossing(
                 np.full_like(t, -lateral_v),
                 agent_id,
                 agent_type=agent_type,
+                ax=0.0,
+                ay=0.0,
             )
         ],
         dt=dt,
@@ -391,6 +450,18 @@ DEFAULT_GRID = {
     },
 }
 
+# Slice that gives the constant-acceleration (CA) predictor something to learn from:
+# the cutter now accelerates/decelerates during the merge (a_cutter ≠ 0), so CA and CV
+# stop being identical. Kept separate from DEFAULT_GRID so D's main matrix (96 scenarios)
+# and every documented denominator stay unchanged.
+CA_GRID = {
+    "cut_in": {
+        "gap_d": [20.0, 30.0],
+        "rel_v": [0.0, 2.0],
+        "a_cutter": [-2.0, 0.0, 2.0],
+    },
+}
+
 
 def scenario_set(
     kinds=KINDS,
@@ -427,6 +498,15 @@ def scenario_set(
     return built
 
 
+def ca_scenario_set(**common) -> ScenarioSet:
+    """The CA slice: 12 cut-ins with ``a_cutter ∈ {−2, 0, +2} m/s²`` (see :data:`CA_GRID`).
+
+    Same builders, same physics filter, same benign/dangerous accounting as the default
+    grid — only the longitudinal acceleration is switched on.
+    """
+    return scenario_set(("cut_in",), CA_GRID, **common)
+
+
 def scenario_label(scenario: Scenario) -> str:
     """Short human label, e.g. ``cut_in(gap_d=25,rel_v=3.0,lc_T=3.0)``."""
     keep = {
@@ -435,6 +515,8 @@ def scenario_label(scenario: Scenario) -> str:
         "crossing": ("gap_d", "arrival_t", "lateral_v"),
     }.get(scenario.kind, tuple(scenario.params))
     body = ",".join(f"{k}={scenario.params[k]:g}" for k in keep if k in scenario.params)
+    if scenario.kind == "cut_in" and scenario.params.get("a_cutter"):
+        body += f",a_cutter={scenario.params['a_cutter']:g}"
     return f"{scenario.kind}({body})"
 
 
