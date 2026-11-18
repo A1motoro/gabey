@@ -104,6 +104,8 @@ python examples/cut_in_demo.py
 | `experiments/exp04_latency.py` | 感知延迟 τ ∈ [0, 300] ms 敏感性 | _TBD_ |
 | `experiments/exp05_cut_in_lead_time.py` | Reactive vs Predictive 的 cut-in lead time | _TBD_ |
 
+A 的 M1 同时是 CA 的评测底座：`ca_scenario_set()`（12 个带纵向加速度的切入）、`Trajectory.accel` 真值、`prediction_slices()` 固定切片。用法与坑见 [docs/CA_scenario_support.md](docs/CA_scenario_support.md)。
+
 ## 结果预览
 
 P 的 L1 固定合成样例：Reactive 在 2.0 s 开始刹车，CV 在 1.7 s 开始刹车，提前 0.3 s；

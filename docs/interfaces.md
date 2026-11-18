@@ -40,6 +40,8 @@ policy.decide(ttc) → brake / cruise
 | M1 | `quintic_lateral(y0, y1, T, t, t0=0) -> ndarray`；`peak_lateral_acc(dy, T)` | A | ✅ |
 | M1 | `quintic_lateral_vel / quintic_lateral_acc`（同上签名）；`min_lc_duration(dy, max_lat_acc)` | A | ✅ 新增 |
 | M1 | `scenario_set(kinds, grid, max_lat_acc, strict) -> ScenarioSet`；`canonical(name) -> Scenario` | A | ✅ 新增 |
+| M1 | `ca_scenario_set() -> ScenarioSet`；`CA_GRID`（12 个带纵向加速度的 cut-in） | A | ✅ 新增（CA） |
+| M1 | `prediction_slices(scenario, history, horizon, stride) -> list[PredictionSlice]` | A | ✅ 新增（CA） |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
 | M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV ✅；其余 TODO（L2/L3） |
 | Risk | `assess_risk(ego_future, agent_future, dt, r_safe) -> RiskEstimate`（纯函数） | P | ✅ L1；严格距离 `< r_safe`，第 k 行时间 `(k+1)*dt` |
@@ -58,6 +60,20 @@ policy.decide(ttc) → brake / cruise
 - `Scenario.agents` 恒为 1 个元素（每类场景单目标）；`agent_id ∈ {"cutter", "lead", "crosser"}`。
 - `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。
 - `load_toy()` 不含 ego（`agent_id` = 文件 stem）；ego 用新增的 `load_toy_ego()`。
+
+### M1 追加：CA 支持（2026-11-18，A）
+
+- `Trajectory.accel: (N, 2) | None` —— **只加不改**的可选字段，列 = `(a_x, a_y)` [m/s²]。
+  合成场景由 builder 解析填充；`load_toy()` 为 `None`（速度列有噪声，不要求导）。
+  **M2 只能把它当测试真值，不能在 `predict()` 里读**。
+- `make_scenario("cut_in", a_cutter=…, accel_T=…)`：纵向加速度只作用于
+  `[cut_in_t, cut_in_t + accel_T]`（默认 `accel_T = lc_T`），之后保持增速；`a_cutter=0`
+  与旧行为逐位一致。`|a_cutter| ≤ 3 m/s²`，坡段结束速度 < 0 时抛 `ValueError`。
+- `CA_GRID` / `ca_scenario_set()`：12 个 cut-in（`gap_d ∈ {20, 30}`、`rel_v ∈ {0, 2}`、
+  `a_cutter ∈ {−2, 0, 2}`），7 benign / 5 dangerous。**不并入 `DEFAULT_GRID`**（D 的 96 场景矩阵不变）。
+- `prediction_slices(scenario, history=1.0, horizon=2.0, stride=0.5)`：返回
+  `PredictionSlice(t0, history, truth, truth_accel)`；`history` 只含 `t ≤ t0` 的观测，
+  `truth[k]` 是 `t0 + (k+1)·dt` 的真值位置，`truth_accel` 同网格。时间单位是秒。
 
 ## C 第一版实现补充（2026-10-20）
 

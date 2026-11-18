@@ -20,6 +20,10 @@ class Trajectory:
     heading: np.ndarray  # (N,)
     agent_type: str = "vehicle"
     agent_id: str = ""  # 供 OraclePredictor 查询真实未来
+    # (N, 2) 真值加速度 [m/s²]，列 = (a_x, a_y)。合成场景由 M1 解析填充；
+    # 真实数据（load_toy）为 None —— 速度列有噪声，不要对它求导当加速度。
+    # 这是"只加不改"的可选字段：None 表示未知，不等于 0。
+    accel: np.ndarray | None = None
 
 
 @dataclass

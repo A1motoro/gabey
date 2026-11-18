@@ -21,6 +21,7 @@ def history_until(traj: Trajectory, t: float) -> Trajectory:
         heading=traj.heading[m],
         agent_type=traj.agent_type,
         agent_id=traj.agent_id,
+        accel=None if traj.accel is None else traj.accel[m],
     )
 
 
