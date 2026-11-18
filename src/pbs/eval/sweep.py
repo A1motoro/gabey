@@ -122,8 +122,13 @@ def select_operating_point(
     for _, group in tradeoff_df.groupby(keys, sort=False):
         eligible = group.loc[group["false_brake_rate"] <= max_false_brake]
         pool = eligible if not eligible.empty else group
+        order = (
+            ["collision_rate", "false_brake_rate", "threshold"]
+            if not eligible.empty
+            else ["false_brake_rate", "collision_rate", "threshold"]
+        )
         pool = pool.sort_values(
-            ["collision_rate", "false_brake_rate", "threshold"],
+            order,
             ascending=[True, True, True],
             na_position="last",
         )
@@ -200,28 +205,24 @@ def lead_times(df: pd.DataFrame, reference: str = "reactive") -> pd.DataFrame:
 
 
 def scenario_id(scenario: Scenario) -> str:
-    """Stable id from kind, params, ego start, and the agent endpoints."""
-    agents = []
-    for agent in scenario.agents:
-        agents.append(
-            {
-                "id": agent.agent_id,
-                "n": int(np.asarray(agent.t).size),
-                "x0": round(float(agent.x[0]), 4),
-                "y0": round(float(agent.y[0]), 4),
-                "x1": round(float(agent.x[-1]), 4),
-                "y1": round(float(agent.y[-1]), 4),
-            }
-        )
+    """Stable id of the full simulation input, including interior trajectory samples."""
     payload = {
         "kind": scenario.kind,
-        "ego": [round(float(value), 5) for value in scenario.ego_start],
+        "ego": [float(value) for value in scenario.ego_start],
+        "dt": float(scenario.dt),
+        "lane_width": float(scenario.lane_width),
         "params": {key: _scalar(value) for key, value in scenario.params.items()},
-        "agents": agents,
+        "agents": [(a.agent_id, a.agent_type) for a in scenario.agents],
     }
-    raw = json.dumps(payload, sort_keys=True, default=str)
-    digest = hashlib.sha1(raw.encode()).hexdigest()[:10]
-    return f"{scenario.kind}-{digest}"
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode())
+    arrays = [scenario.ego_path]
+    for agent in scenario.agents:
+        arrays.extend(getattr(agent, key) for key in ("t", "x", "y", "v", "heading"))
+    for values in arrays:
+        array = np.ascontiguousarray(values, dtype="<f8")
+        digest.update(str(array.shape).encode())
+        digest.update(array.tobytes())
+    return f"{scenario.kind}-{digest.hexdigest()[:20]}"
 
 
 def _subset(df: pd.DataFrame, system: str, threshold, latency) -> pd.DataFrame:

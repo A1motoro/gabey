@@ -16,6 +16,7 @@ from pbs.eval.sweep import (
     rescue_rate,
     run_matrix,
     safe_area,
+    scenario_id,
     select_operating_point,
     tradeoff,
 )
@@ -121,6 +122,66 @@ def test_operating_point_respects_the_false_brake_budget():
     assert bool(chosen.iloc[0]["met_budget"])
 
 
+def test_operating_point_without_eligible_threshold_minimizes_false_brakes():
+    table = pd.DataFrame(
+        [
+            {
+                "system": "cv",
+                "latency": 0.0,
+                "threshold": 1.0,
+                "collision_rate": 0.4,
+                "false_brake_rate": 0.1,
+            },
+            {
+                "system": "cv",
+                "latency": 0.0,
+                "threshold": 2.0,
+                "collision_rate": 0.0,
+                "false_brake_rate": 0.2,
+            },
+        ]
+    )
+    row = select_operating_point(table, max_false_brake=0.05).iloc[0]
+    assert row["threshold"] == 1.0
+    assert not row["met_budget"]
+
+
+def test_scenario_identity_includes_interior_motion_and_geometry():
+    import copy
+
+    first = straight_scenario()
+    same = copy.deepcopy(first)
+    assert scenario_id(first) == scenario_id(same)
+    changed = copy.deepcopy(first)
+    changed.agents[0].y[10] += 5.0
+    assert scenario_id(first) != scenario_id(changed)
+    changed = copy.deepcopy(first)
+    changed.lane_width += 1.0
+    assert scenario_id(first) != scenario_id(changed)
+    changed = copy.deepcopy(first)
+    changed.ego_path[1, 1] += 1.0
+    assert scenario_id(first) != scenario_id(changed)
+
+
+def test_benign_cache_separates_same_endpoints_with_different_interior(monkeypatch):
+    import copy
+
+    first = straight_scenario()
+    second = copy.deepcopy(first)
+    second.agents[0].y[10] += 5.0
+    calls = []
+
+    def label(sc, **kwargs):
+        calls.append(sc)
+        return sc is second
+
+    monkeypatch.setattr("pbs.eval.sweep.is_benign", label)
+    frame = run_matrix(["cv"], [first, second], [2], sim_kwargs={"duration": 1})
+    assert len(calls) == 2
+    assert frame["scenario_id"].nunique() == 2
+    assert frame["benign"].tolist() == [False, True]
+
+
 def test_boundary_rescue_and_safe_area():
     rows = []
     for gap, rel, benign, collision in (
@@ -175,6 +236,21 @@ def test_plot_boundaries_returns_axes():
     fig, ax = plt.subplots()
     plot_boundaries(pd.DataFrame(rows), ["reactive"], ax=ax, threshold=2.0)
     assert ax.get_xlabel() == "gap_d [m]"
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("system", ["reactive", "ca"])
+def test_collision_cross_markers_remain_visible(system):
+    frame = pd.DataFrame(
+        [
+            _row("a", system, 2.0, False, True, False, gap_d=10.0, rel_v=2.0),
+            _row("b", system, 2.0, True, False, False, gap_d=20.0, rel_v=-2.0),
+        ]
+    )
+    fig, ax = plt.subplots()
+    plot_boundaries(frame, [system], ax=ax)
+    colors = ax.collections[0].get_edgecolors()
+    assert len(colors) and (colors[:, 3] > 0).all()
     plt.close(fig)
 
 

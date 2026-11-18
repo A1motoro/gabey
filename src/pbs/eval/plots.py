@@ -69,16 +69,20 @@ def plot_boundaries(df, systems, ax=None, threshold=None, latency=None, labels=N
             ):
                 ax.contour(xs, ys, field, levels=[0.5], colors=[color], linewidths=2.0)
         if len(hits):
+            marker = _MARKERS.get(name, "x")
+            # Unfilled x/+ markers inherit their stroke from facecolor; setting
+            # facecolors='none' makes the actual collision cells invisible.
+            marker_options = {} if marker in ("x", "+") else {"facecolors": "none"}
             ax.scatter(
                 hits["gap_d"],
                 hits["rel_v"],
                 s=42,
                 color=color,
-                marker=_MARKERS.get(name, "x"),
-                facecolors="none",
+                marker=marker,
                 linewidths=1.5,
                 zorder=3,
                 label=label,
+                **marker_options,
             )
         else:
             ax.plot([], [], color=color, linewidth=2.0, label=f"{label} (0 collisions)")

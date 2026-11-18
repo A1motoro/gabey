@@ -14,7 +14,7 @@
 | A | Persistent | 场景 | M1 `pbs.data` |
 | D | yj | 评估与实验 + 统筹 | M4 `pbs.eval`、`pbs.systems` |
 
-完整方案见 [docs/spec.md](docs/spec.md)（v3：实现从 W7 起步，排期见 §5，具体形式见 §7，最终交付物见 §8）。
+完整方案见 [docs/spec.md](docs/spec.md)（当前 v2；模块分工与排期见 §2、§4、§5）。
 
 ## Motivation
 
@@ -83,7 +83,7 @@ src/pbs/
   sim/            M3  run_sim, ego rollout, footprint, policy, latency
   eval/           M4  counterfactual, metrics, experiment matrix, plots
   systems.py      被比较的 AEB 系统注册表
-  demo.py         单场景多系统对比动画（v3 新增，W9–W10）
+  demo/           本地浏览器单场景多系统对比
 experiments/      一个实验一个脚本，产出 outputs/figures/
 tests/            pytest
 docs/             interfaces / scenarios / d-baseline / ai_disclosure / contributions
@@ -166,7 +166,7 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 
 ## AI 工具使用声明
 
-按课程 AI Tool Usage Policy，每人一份：[C](docs/ai_disclosure/C.md) · [P](docs/ai_disclosure/P.md) · [A](docs/ai_disclosure/A.md) · [D](docs/ai_disclosure/D.md)（说明见 [docs/ai_disclosure/README.md](docs/ai_disclosure/README.md)）。
+按课程 AI Tool Usage Policy 记录于 [docs/ai_disclosure.md](docs/ai_disclosure.md)。
 
 ## 数据说明
 

@@ -1,7 +1,14 @@
 # D 的 Evaluation Baseline（M4 · `pbs.eval` / `pbs.systems`）
 
-> Owner：D（yj）· 2026-10-20 · 配合 [spec.md](spec.md) v3 §3 / §5 / §8 与 [interfaces.md](interfaces.md)。
-> P 的 baseline 回答"系统怎么判断风险"；D 的 baseline 回答"**怎么公平地判定一个系统好不好**"。本文定义 D 的度量、数据表、实验与验收标准，不含新代码。
+PR #8 审核修正（2026-11-18）：没有阈值满足误刹预算时，先选择最低误刹率；
+场景 ID 纳入完整轨迹、路径和几何参数，避免不同中间运动错误共享 benign 标签；
+Reactive/CA 的 x/+ 碰撞点保持可见；README 链接恢复到仓库实际存在的 spec 和 AI 记录。
+exp02/03/05 快速实验已重跑，§9 的主要数字保持一致，图与 CSV 已核对。
+审核修正后全仓回归 300 passed / 1 deselected（已知 Windows Demo 端口测试），
+变更 Python 文件 Black / Ruff 与 `git diff --check` 通过。
+
+> Owner：D（yj）· 配合现有 [spec.md](spec.md) v2 与 [interfaces.md](interfaces.md)。
+> P 的 baseline 回答"系统怎么判断风险"；D 的 baseline 回答"**怎么公平地判定一个系统好不好**"。本文记录 D 的度量、数据表、实验、验收标准与 L2 验证结果。
 
 ## 1. 职责边界
 
@@ -11,7 +18,7 @@
 
 D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue 给对应 owner，不在 `pbs.eval` 里打补丁绕过。
 
-## 2. 现状（`main` @ d3fe1ec，2026-10-21；未含 PR #3）
+## 2. 本次 L2 实现状态
 
 | 组件 | 文件 | 状态 | 说明 |
 | --- | --- | --- | --- |
