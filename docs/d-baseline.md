@@ -108,7 +108,10 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 
 ## 9. L2 quick 结果（2026-11-18）
 
-实验网格在 `experiments/cut_in_grid.py`，不替换 A 的 `make_scenario`。完成换道的几何与 P 的 L1 fixture 相同；另外 6 个中止换道用来制造“看起来要进来、实际不撞”的 benign 样本，A 的 `gap_d > 0` 网格不含这组。日志比仿真长一个 3 s 预测时域，避免 Oracle 把轨迹末端当成停车。`--quick`：完成换道 5×5（gap 8–48 m，rel_v −4–12 m/s），仿真 15 s。三条命令合计约 30 s。
+场景全部来自 A 的 `pbs.data`，组装在 `experiments/scenario_sets.py`。所有场景都用 `duration=18` 生成、仿真 15 s：日志比仿真长一个 3 s 预测时域，避免 Oracle 把轨迹末端当成停车。
+
+- exp03 / exp05：`make_scenario("cut_in", lc_T=3.0)` 在 (gap_d, rel_v) 平面上的密网格。`--quick` 为 5×5（gap 8–48 m，rel_v −4–12 m/s）。A 的 `DEFAULT_GRID` 注明了密扫由 D 负责。
+- exp02：A 的 `scenario_set()`（切入 60、前车制动 20、横穿 16，无被拒组合）加 `ca_scenario_set()` 中 `a_cutter = ±2` 的 8 个，再加 6 个中止换道，共 110 个。中止换道是 A 的生成器没有的一类：切入车向本车道靠近后返回，最近距离仍大于 `r_safe`。三条命令合计约 110 s。
 
 ```bash
 python experiments/exp02_threshold_sweep.py --quick
@@ -116,9 +119,7 @@ python experiments/exp03_failure_boundary.py --quick
 python experiments/exp05_cut_in_lead_time.py --quick
 ```
 
-完成换道 25 个场景里 12 个 dangerous、13 个 benign。exp02 另加 6 个中止换道（向本车道靠近后返回，最近距离仍大于 `r_safe`），否则完成换道上的误报率恒为 0：相对速度 ≤ 0 时没有系统会刹车。
-
-在 false-brake ≤ 5% 的工作点上（这组粗网格里与固定 2.0 s 的 rescue 相同）：
+边界网格 25 个切入里 12 个 dangerous、13 个 benign。在 false-brake ≤ 5% 的工作点上（这组粗网格里与固定 2.0 s 的 rescue 相同）：
 
 | 系统 | rescue rate | 含义 |
 | --- | ---: | --- |
@@ -127,6 +128,12 @@ python experiments/exp05_cut_in_lead_time.py --quick
 | CA | 0.833 | 与 CV 相同；这段 quintic 上常加速度没有分开 |
 | Oracle | 1.000 | rescue(Oracle) − rescue(CV) = **0.17**，预测误差的代价 |
 
-exp02 在 2.0 s（含中止换道）：Reactive 碰撞率 0.42、误报 0；CV / CA 碰撞率 0.17、误报 0.11；Oracle 碰撞率 0、误报 0。Oracle 在 1.0 s 仍有 0.25 的碰撞率，阈值并不是免费的。
+exp02 共 56 个 dangerous、54 个 benign。2.0 s 时碰撞率 Reactive 0.196、CV 0.107、CA 0.089、Oracle 0.071；误报率 Reactive 0.037、CV / CA 0.056、Oracle 0.019。1.0 s 时四个系统的碰撞率都在 0.38–0.43，阈值并不是免费的。分类来看：
+
+- 切入（A 的网格）：没有系统误报。碰撞率 Reactive 0.148、CV / CA 0.037、Oracle 0。
+- 前车制动：4 个 benign 里有 1 个四个系统都会刹（慢速制动的前车在 15 s 内没追上），误报率同为 0.25。2.0 s 时 CA 和 Oracle 无碰撞，CV 与 Reactive 各 1 例。
+- 横穿：2.0 s 时预测系统的碰撞率都是 0.444，Reactive 是 0.667；有 4 个连 Oracle 也躲不开。
+- CA 切片（`a_cutter = ±2`）：4 个 dangerous 场景所有系统都躲开了，这组粗网格还分不开 CA 和 CV。
+- 中止换道：CV 和 CA 的误报率在 2.0 s 时是 0.33，Reactive 和 Oracle 为 0。prediction 误判切入的代价只在这组上能看到；去掉它，CV 的误报率从 0.056 降到 0.021，`exp02_summary.json` 里两组数都有。
 
 exp05 的 lead time 是双峰的，不能只报中位数。双方都刹车时中位数是 −0.1 s：切入完成后只剩纵向跟车，Reactive 的连续 TTC 比离散预测早大约一个仿真步。CV 真正更早的那些场景中位数是 0.9 s（CTRV 1.25 s），而且就是 CV 躲开、Reactive 撞上的格子。另有 2 个场景只有预测系统刹车，但刹得太晚，仍然碰撞。

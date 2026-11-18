@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 
 import numpy as np
+from scenario_sets import SIM_DURATION
 
 from pbs.systems import CORE
 
-SIM_KWARGS = {"duration": 15.0, "horizon": 30, "r_safe": 2.5}
+SIM_KWARGS = {"duration": SIM_DURATION, "horizon": 30, "r_safe": 2.5}
 QUICK_THRESHOLDS = (1.0, 2.0)
 FULL_THRESHOLDS = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
 LEAD_SYSTEMS = ("reactive", "cv", "ctrv")

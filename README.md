@@ -53,7 +53,7 @@ Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903
 验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
 产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块。
 D 的 L2 实验矩阵见 [docs/d-baseline.md](docs/d-baseline.md) §9：`exp02`、`exp03`、`exp05` 已支持 `--quick`。
-CA、CTRV、Oracle 已接入；LR 与 `exp04` 仍是 L3。`--quick` 网格是带中止换道的解析切入，和 A 的 `make_scenario` 网格分开。
+CA、CTRV、Oracle 已接入；LR 与 `exp04` 仍是 L3。场景由 A 的 `make_scenario` / `scenario_set` 生成，exp02 另加 6 个中止换道。
 测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
 
 ## 目录结构

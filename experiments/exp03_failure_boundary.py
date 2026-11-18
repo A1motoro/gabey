@@ -1,5 +1,5 @@
 """exp03 — HEADLINE FIGURE (D). Failure boundaries of Reactive / CV / CA / Oracle
-on the (gap_d, rel_v) plane for completed cut-ins.
+on the (gap_d, rel_v) plane for A's ``make_scenario("cut_in")`` at lc_T = 3 s.
 
   rescue(CV) − rescue(Reactive) = value of prediction
   rescue(Oracle) − rescue(CV)   = cost of prediction error
@@ -19,7 +19,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
-from cut_in_grid import cut_in_grid
 from matrix_setup import (
     BOUNDARY_SYSTEMS,
     FULL_THRESHOLDS,
@@ -27,6 +26,7 @@ from matrix_setup import (
     SIM_KWARGS,
     write_json,
 )
+from scenario_sets import boundary_grid
 
 from pbs.eval.plots import plot_boundaries, plot_stopping_distance
 from pbs.eval.sweep import rescue_rate, run_matrix, select_operating_point, tradeoff
@@ -52,7 +52,7 @@ def main():
         thresholds = QUICK_THRESHOLDS if args.quick else FULL_THRESHOLDS
         if FIXED_THRESHOLD not in thresholds:
             thresholds = tuple(sorted(set(thresholds) | {FIXED_THRESHOLD}))
-        scenarios = cut_in_grid(quick=args.quick, maneuvers=("complete",))
+        scenarios = boundary_grid(quick=args.quick)
         frame = run_matrix(BOUNDARY_SYSTEMS, scenarios, thresholds, sim_kwargs=SIM_KWARGS)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(csv_path, index=False)

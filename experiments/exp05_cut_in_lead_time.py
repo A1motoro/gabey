@@ -1,8 +1,9 @@
 """exp05 — cut-in detection lead time (P + D).
 
-For each completed cut-in: brake_onset(Reactive) − brake_onset(CV / CTRV), at one
-shared threshold. Defined only when both systems brake. Scenarios where only one
-side brakes are counted, not dropped. Output: outputs/figures/exp05_lead_time.png
+For each ``make_scenario("cut_in")`` on the boundary grid:
+brake_onset(Reactive) − brake_onset(CV / CTRV), at one shared threshold.
+Defined only when both systems brake. Scenarios where only one side brakes
+are counted, not dropped. Output: outputs/figures/exp05_lead_time.png
 """
 
 import argparse
@@ -15,8 +16,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from cut_in_grid import cut_in_grid
 from matrix_setup import LEAD_SYSTEMS, SIM_KWARGS, write_json
+from scenario_sets import boundary_grid
 
 from pbs.eval.plots import SYSTEM_COLORS
 from pbs.eval.sweep import lead_times, run_matrix
@@ -38,7 +39,7 @@ def main():
     if args.from_csv:
         frame = pd.read_csv(args.from_csv)
     else:
-        scenarios = cut_in_grid(quick=args.quick, maneuvers=("complete",))
+        scenarios = boundary_grid(quick=args.quick)
         frame = run_matrix(LEAD_SYSTEMS, scenarios, [THRESHOLD], sim_kwargs=SIM_KWARGS)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(csv_path, index=False)

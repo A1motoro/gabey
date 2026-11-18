@@ -1,10 +1,11 @@
 """exp02 — collision rate vs false-brake rate, one curve per system in CORE (D).
 
-The scenario set mixes completed cut-ins with aborted near-misses. A completed cut-in
-with rel_v <= 0 never closes the gap, so nobody brakes and it cannot show a false brake.
-The abort set dips toward the lane and returns outside r_safe; constant-velocity
-extrapolation still predicts a collision. Output: outputs/figures/exp02_tradeoff.png
-and outputs/logs/exp02.csv. The figure is drawn from the CSV.
+Scenarios: A's default grid (cut_in, lead_brake, crossing), A's CA slice, and six
+aborted cut-ins. On A's cut-ins alone no system ever false-brakes, so the cost of a
+wrong cut-in prediction would not show; the aborts lean toward the lane and return
+outside r_safe. The summary reports the curve with and without them, and per family.
+Output: outputs/figures/exp02_tradeoff.png and outputs/logs/exp02.csv. The figure is
+drawn from the CSV.
 """
 
 import argparse
@@ -17,7 +18,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from cut_in_grid import cut_in_grid
 from matrix_setup import (
     BOUNDARY_SYSTEMS,
     FULL_THRESHOLDS,
@@ -25,16 +25,17 @@ from matrix_setup import (
     SIM_KWARGS,
     write_json,
 )
+from scenario_sets import kind_label, tradeoff_set
 
 from pbs.eval.plots import SYSTEM_COLORS
-from pbs.eval.sweep import run_matrix, tradeoff
+from pbs.eval.sweep import run_matrix, scenario_id, tradeoff
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--quick", action="store_true", help="5×5 grid and two thresholds")
+    parser.add_argument("--quick", action="store_true", help="two thresholds instead of six")
     parser.add_argument(
         "--from-csv", type=Path, default=None, help="redraw the figure from a saved matrix"
     )
@@ -42,16 +43,24 @@ def main():
     csv_path = ROOT / "outputs/logs/exp02.csv"
     figure_path = ROOT / "outputs/figures/exp02_tradeoff.png"
     summary_path = ROOT / "outputs/logs/exp02_summary.json"
+    counts = None
     if args.from_csv:
         frame = pd.read_csv(args.from_csv)
     else:
         thresholds = QUICK_THRESHOLDS if args.quick else FULL_THRESHOLDS
-        scenarios = cut_in_grid(quick=args.quick, maneuvers=("complete", "abort"))
+        scenarios, counts = tradeoff_set()
         frame = run_matrix(BOUNDARY_SYSTEMS, scenarios, thresholds, sim_kwargs=SIM_KWARGS)
+        families = {scenario_id(s): kind_label(s) for s in scenarios}
+        frame.insert(2, "family", frame["scenario_id"].map(families))
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(csv_path, index=False)
         frame = pd.read_csv(csv_path)
     table = tradeoff(frame)
+    team_only = tradeoff(frame[frame["family"] != "cut_in_abort"])
+    by_family = {
+        family: tradeoff(group).to_dict(orient="records")
+        for family, group in frame.groupby("family", sort=False)
+    }
     _plot(table, figure_path)
     one = frame[frame["system"] == frame["system"].iloc[0]]
     one = one[np.isclose(one["threshold"].astype(float), float(one["threshold"].iloc[0]))]
@@ -65,15 +74,22 @@ def main():
         "n_scenarios": int(len(one)),
         "n_benign_scenarios": int(benign.sum()),
         "n_dangerous_scenarios": int((~benign).sum()),
+        "scenario_counts": counts,
         "tradeoff": table.to_dict(orient="records"),
+        "tradeoff_without_aborts": team_only.to_dict(orient="records"),
+        "tradeoff_by_family": by_family,
         "false_brake_identically_zero": bool((table["false_brake_rate"].fillna(0) == 0).all()),
         "csv": str(csv_path),
         "figure": str(figure_path),
     }
     write_json(summary_path, summary)
-    printable = {key: value for key, value in summary.items() if key != "tradeoff"}
+    printable = {
+        key: value for key, value in summary.items() if not key.startswith("tradeoff")
+    }
     print(json.dumps(printable, indent=2))
     print(table.to_string(index=False))
+    print("without aborts:")
+    print(team_only.to_string(index=False))
     print(f"Artifacts: {figure_path.resolve()}")
 
 
@@ -101,7 +117,8 @@ def _plot(table: pd.DataFrame, path: Path) -> None:
             )
     ax.set_xlabel("false-brake rate (benign scenarios)")
     ax.set_ylabel("collision rate (dangerous scenarios)")
-    ax.set_xlim(-0.05, 1.05)
+    x_max = max(0.2, 1.3 * float(table["false_brake_rate"].max()))
+    ax.set_xlim(-0.02 * x_max, x_max)
     ax.set_ylim(-0.05, 1.05)
     ax.set_title("exp02  safety–false-brake trade-off")
     ax.grid(alpha=0.3)
