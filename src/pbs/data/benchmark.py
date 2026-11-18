@@ -8,8 +8,9 @@ piecewise constant, so it cannot show whether an acceleration model helps.
 
 Two rules that make the benchmark honest:
 
-* ``history`` contains only samples with ``t <= t0`` (no future leakage), matching what
-  ``run_sim`` hands to an assessor.
+* ``history`` contains only samples in ``[t0 − history, t0]`` (no future leakage, and a
+  fixed-length sliding window rather than the whole prefix), matching what ``run_sim``
+  hands to an assessor.
 * ``truth`` is the agent's true future at ``t0 + k·dt``, ``k = 1..H`` — the same time
   convention as ``Predictor.predict``.
 
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from pbs.types import Scenario, Trajectory
-from pbs.utils import history_until
+from pbs.utils import history_window
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,11 @@ def prediction_slices(
     Parameters
     ----------
     history:
-        Seconds of past observations each slice may use (window ``[t0 − history, t0]``).
+        Seconds of past observations each slice may use: the window ``[t0 − history, t0]``
+        **slides** with ``t0``, so every slice sees the same number of samples
+        (``history/dt + 1`` = 11 at 10 Hz for ``history=1.0``) instead of a growing prefix
+        from t = 0. This is what :func:`pbs.prediction.ConstantAccelPredictor` should fit
+        over — the full prefix would mix in dynamics from long before the forecast.
     horizon:
         Forecast length: truth rows are ``t0 + k·dt`` for ``k = 1..H``, ``H = horizon/dt``.
     stride:
@@ -118,7 +123,7 @@ def prediction_slices(
         slices.append(
             PredictionSlice(
                 t0=float(t0),
-                history=history_until(agent, t0),
+                history=history_window(agent, t0, history),
                 truth=truth,
                 truth_accel=truth_accel,
             )

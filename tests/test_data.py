@@ -337,6 +337,18 @@ def test_ca_slice_builds_and_keeps_both_classes():
     assert {sc.params["a_cutter"] for sc in built.scenarios} == {-2.0, 0.0, 2.0}
     benign = [sc for sc in built.scenarios if is_benign(sc, duration=sc.params["duration"])]
     assert 0 < len(benign) < len(built.scenarios)
+    # Exact split, not just "both classes exist": the handoff doc quotes it, and
+    # a_cutter = 0 is the only column that is not uniform (0 → 2 benign / 2 dangerous,
+    # −2 → all dangerous, +2 → all benign).
+    assert len(benign) == 6
+    by_accel: dict[float, list[bool]] = {}
+    for sc in built.scenarios:
+        by_accel.setdefault(sc.params["a_cutter"], []).append(
+            is_benign(sc, duration=sc.params["duration"])
+        )
+    assert by_accel[-2.0] == [False, False, False, False]
+    assert sorted(by_accel[0.0]) == [False, False, True, True]
+    assert by_accel[2.0] == [True, True, True, True]
 
 
 def test_history_slices_carry_ground_truth_acceleration():
@@ -361,6 +373,9 @@ def test_prediction_slices_cover_the_clip_without_leakage():
     for slc in slices:
         assert slc.history.t[-1] == pytest.approx(slc.t0)  # nothing from the future
         assert np.all(slc.history.t <= slc.t0 + 1e-9)
+        # fixed-length sliding window [t0 − 1 s, t0], not a growing prefix from t = 0
+        assert len(slc.history.t) == 11
+        assert slc.history.t[0] == pytest.approx(slc.t0 - 1.0)
         assert slc.truth.shape == (20, 2)
         assert slc.truth_accel is not None and slc.truth_accel.shape == (20, 2)
 

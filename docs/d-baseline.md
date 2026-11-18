@@ -15,7 +15,7 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 
 | 组件 | 文件 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| `SYSTEMS` / `CORE` / `make_system` | `pbs/systems.py` | ✅ | `CORE = reactive, cv, ca, oracle`。CA / CTRV / Oracle 已实现；LR 仍是 L3 |
+| `SYSTEMS` / `CORE` / `make_system` | `pbs/systems.py` | ✅ | `CORE = reactive, cv, ca, oracle`。CA / CTRV / Oracle 由 P 实现（见 `docs/l2-validation.md`）；LR 仍是 L3 |
 | `is_benign` | `eval/counterfactual.py` | ✅ | NullAssessor + NeverBrakePolicy 下不碰撞 ⇒ benign |
 | `ade` / `fde` | `eval/metrics.py` | ✅ | P 的 exp00 已复用 |
 | `evaluate(log, benign)` | `eval/metrics.py` | ✅ | collision / min_dist / brake_onset_t / false_brake / benign |
@@ -25,7 +25,7 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 | `failure_boundary` / `safe_area` / `rescue_rate` | `eval/sweep.py` | ✅ L2 | §5.2。主指标是 rescue rate，不是含 benign 格子的面积 |
 | `plot_boundaries` | `eval/plots.py` | ✅ L2 | 碰撞格必画；碰撞格 ≥ 4 时才叠 0.5 等高线，避免两个孤立点被画成一块区域 |
 | exp02 / exp03 / exp05 | `experiments/` | ✅ L2 `--quick` | 见 §9。exp01 归 P，exp04 仍是可砍的 L3 |
-| 测试 | `tests/test_sweep.py`、`test_counterfactual.py`、`test_predictors.py` | ✅ | 全库 125 passed（2026-11-18，课程环境 `aie1903_ad`） |
+| 测试 | `tests/test_sweep.py`、`test_scenario_sets.py`、`test_counterfactual.py` | ✅ | 合并 main 后全库 294 passed，2 failed 为缺 `data/sample_trajectories`（2026-11-18，课程环境 `aie1903_ad`） |
 
 ## 3. 核心定义（proposal 与报告中写死）
 
@@ -136,4 +136,4 @@ exp02 共 56 个 dangerous、54 个 benign。2.0 s 时碰撞率 Reactive 0.196�
 - CA 切片（`a_cutter = ±2`）：4 个 dangerous 场景所有系统都躲开了，这组粗网格还分不开 CA 和 CV。
 - 中止换道：CV 和 CA 的误报率在 2.0 s 时是 0.33，Reactive 和 Oracle 为 0。prediction 误判切入的代价只在这组上能看到；去掉它，CV 的误报率从 0.056 降到 0.021，`exp02_summary.json` 里两组数都有。
 
-exp05 的 lead time 是双峰的，不能只报中位数。双方都刹车时中位数是 −0.1 s：切入完成后只剩纵向跟车，Reactive 的连续 TTC 比离散预测早大约一个仿真步。CV 真正更早的那些场景中位数是 0.9 s（CTRV 1.25 s），而且就是 CV 躲开、Reactive 撞上的格子。另有 2 个场景只有预测系统刹车，但刹得太晚，仍然碰撞。
+exp05 的 lead time 是双峰的，不能只报中位数。双方都刹车时中位数是 −0.1 s：切入完成后只剩纵向跟车，Reactive 的连续 TTC 比离散预测早大约一个仿真步。CV 真正更早的那些场景中位数是 0.9 s（CTRV 1.1 s），而且就是 CV 躲开、Reactive 撞上的格子。另有 2 个场景只有预测系统刹车，但刹得太晚，仍然碰撞。
