@@ -4,6 +4,7 @@
 
 | 周 | C | P | A | D |
 | --- | --- | --- | --- | --- |
+| W11（P L3） | | `LinearRegressionPredictor` 窗口位置拟合；`tests/test_l3_predictors.py`；exp01 `--include-lr` 五模型同切片 CSV/图；`docs/l3-validation.md` | | |
 | W11（P L2） | | `ConstantAccelPredictor`、`CTRVPredictor`、`OraclePredictor`；`tests/test_l2_predictors.py` 与原跳过用例；`exp01_predictor_ade.py` 同切片误差 CSV/图；`docs/l2-validation.md` 与接口追加约定 | | |
 | W4 | | | M1 交付：`pbs/data/{scenarios,loader}.py`（quintic 换道 + `cut_in`/`lead_brake`/`crossing` 三类场景 + 横向加速度过滤 + 96 场景网格，47% benign）；`experiments/exp00_scenarios.py`（3 图 + CSV + 汇总）；`tests/test_data.py`（31 项）；`docs/scenarios.md`、`docs/A_baseline_handoff.md` | |
 | W10 | | | | `run_matrix` / trade-off / rescue rate / 四边界图；`exp02`、`exp03`、`exp05` 的 `--quick`（场景用 A 的 `make_scenario` / `scenario_set`） |

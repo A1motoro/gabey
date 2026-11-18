@@ -1,6 +1,6 @@
-"""exp01 — P L2: CV / CA / CTRV / Oracle on identical synthetic windows.
+"""exp01 — P L2/L3: motion predictors on identical synthetic windows.
 
-Uses A's CA grid plus lead braking and crossing. LR remains optional L3.
+Uses A's CA grid plus lead braking and crossing. --include-lr adds P's L3 model.
 """
 
 import argparse
@@ -20,13 +20,16 @@ from pbs.prediction import (
     ConstantAccelPredictor,
     ConstantVelocityPredictor,
     CTRVPredictor,
+    LinearRegressionPredictor,
     OraclePredictor,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(output_dir: Path = ROOT / "outputs/figures/l2-predictors") -> dict:
+def main(
+    output_dir: Path = ROOT / "outputs/figures/l2-predictors", *, include_lr: bool = False
+) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     scenarios = ca_scenario_set().scenarios + [
         make_scenario("lead_brake"),
@@ -38,6 +41,8 @@ def main(output_dir: Path = ROOT / "outputs/figures/l2-predictors") -> dict:
         CTRVPredictor(),
         OraclePredictor(),
     ]
+    if include_lr:
+        predictors.insert(-1, LinearRegressionPredictor())
     rows = []
     max_oracle_error = 0.0
     for index, sc in enumerate(scenarios):
@@ -89,6 +94,7 @@ def main(output_dir: Path = ROOT / "outputs/figures/l2-predictors") -> dict:
         "scenarios": len(scenarios),
         "history_window_s": 1.0,
         "ca_ctrv_estimation_samples": 10,
+        "lr_estimation_samples": 10 if include_lr else None,
         "stride_s": 0.5,
         "horizons_s": [0.5, 1, 2, 3],
         "forecast_origins_per_scenario": len(errors) // (len(scenarios) * len(predictors) * 4),
@@ -104,5 +110,10 @@ def main(output_dir: Path = ROOT / "outputs/figures/l2-predictors") -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "outputs/figures/l2-predictors")
-    main(parser.parse_args().output_dir)
+    parser.add_argument("--include-lr", action="store_true", help="include the L3 linear fit")
+    parser.add_argument("--output-dir", type=Path)
+    args = parser.parse_args()
+    output = args.output_dir or ROOT / "outputs/figures" / (
+        "l3-predictors" if args.include_lr else "l2-predictors"
+    )
+    main(output, include_lr=args.include_lr)
