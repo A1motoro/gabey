@@ -1,4 +1,4 @@
-"""Round 4: P's completed L1 systems through the unchanged C/D simulation APIs."""
+"""Exercise the historical L1 circle contract through the C/D simulation APIs."""
 
 import json
 import subprocess
@@ -23,8 +23,8 @@ from tests.test_scenarios import straight_scenario
 @pytest.mark.parametrize("lead_v,benign", [(10.0, False), (20.0, True)])
 def test_l1_straight_scenario_braking_and_counterfactual(system, lead_v, benign):
     scenario = straight_scenario(lead_v)
-    assert is_benign(scenario) == benign
-    log = run_sim(scenario, make_system(system), TTCThresholdPolicy())
+    assert is_benign(scenario, r_safe=R_SAFE) == benign
+    log = run_sim(scenario, make_system(system), TTCThresholdPolicy(), r_safe=R_SAFE)
     metrics = evaluate(log, benign)
     assert not metrics["collision"]
     assert not metrics["false_brake"]
@@ -37,7 +37,9 @@ def test_l1_straight_scenario_braking_and_counterfactual(system, lead_v, benign)
 def test_l1_without_agents_cruises(system):
     scenario = straight_scenario()
     scenario.agents = []
-    log = run_sim(scenario, make_system(system), TTCThresholdPolicy(), duration=1.0)
+    log = run_sim(
+        scenario, make_system(system), TTCThresholdPolicy(), duration=1.0, r_safe=R_SAFE
+    )
     assert set(log.action) == {"cruise"}
     assert np.isinf(log.ttc).all()
     assert not log.collision
@@ -48,8 +50,8 @@ def test_l1_repeated_run_is_deterministic_and_does_not_change_scenario(system):
     scenario = cut_in_fixture()
     original = [(a.x.copy(), a.y.copy()) for a in scenario.agents]
     assessor = make_system(system)
-    first = run_sim(scenario, assessor, TTCThresholdPolicy(), duration=6.0)
-    second = run_sim(scenario, assessor, TTCThresholdPolicy(), duration=6.0)
+    first = run_sim(scenario, assessor, TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE)
+    second = run_sim(scenario, assessor, TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE)
     np.testing.assert_array_equal(first.ego_x, second.ego_x)
     np.testing.assert_array_equal(first.ttc, second.ttc)
     assert first.action == second.action
@@ -61,7 +63,11 @@ def test_l1_repeated_run_is_deterministic_and_does_not_change_scenario(system):
 @pytest.mark.parametrize("system", ["reactive", "cv"])
 def test_l1_delayed_straight_history_remains_safe(system):
     log = run_sim(
-        straight_scenario(prehistory=0.3), make_system(system), TTCThresholdPolicy(), latency=0.3
+        straight_scenario(prehistory=0.3),
+        make_system(system),
+        TTCThresholdPolicy(),
+        latency=0.3,
+        r_safe=R_SAFE,
     )
     assert not log.collision
     assert "brake" in log.action
@@ -74,9 +80,13 @@ def test_l1_multiagent_takes_nearest_risk(system):
     far = straight_scenario()
     far.agents[0].x += 40
     far.agents[0].agent_id = "far"
-    single = run_sim(near, make_system(system), TTCThresholdPolicy(), duration=1.0, horizon=100)
+    single = run_sim(
+        near, make_system(system), TTCThresholdPolicy(), duration=1.0, horizon=100, r_safe=R_SAFE
+    )
     near.agents += far.agents
-    combined = run_sim(near, make_system(system), TTCThresholdPolicy(), duration=1.0, horizon=100)
+    combined = run_sim(
+        near, make_system(system), TTCThresholdPolicy(), duration=1.0, horizon=100, r_safe=R_SAFE
+    )
     np.testing.assert_allclose(combined.ttc, single.ttc)
     assert combined.action == single.action
 
@@ -102,10 +112,10 @@ def test_l1_cut_in_cv_brakes_before_reactive():
 @pytest.mark.parametrize("system", ["reactive", "cv"])
 def test_l1_benign_cut_in_is_not_a_false_brake(system):
     scenario = cut_in_fixture(rel_v=-2.0)
-    assert is_benign(scenario, duration=6.0)
+    assert is_benign(scenario, duration=6.0, r_safe=R_SAFE)
     log = run_sim(
-            scenario, make_system(system), TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE
-        )
+        scenario, make_system(system), TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE
+    )
     assert not evaluate(log, benign=True)["false_brake"]
     assert not log.collision
 
