@@ -1,6 +1,6 @@
 """Scenario sets for D's experiments, built with A's ``pbs.data`` generators.
 
-Logs are ``LOG_PAD`` seconds longer than the simulation. The risk horizon is 3 s, and
+Logs are ``LOG_PAD`` seconds longer than the simulation. The L2 risk horizon is 4 s, and
 without the pad Oracle holds the last sample and treats a moving agent as stopped.
 """
 
@@ -18,7 +18,7 @@ from pbs.eval.sweep import scenario_id
 from pbs.types import Scenario, Trajectory
 
 SIM_DURATION = 15.0
-LOG_PAD = 3.0
+LOG_PAD = 4.0
 LOG_DURATION = SIM_DURATION + LOG_PAD
 QUICK_GAPS = (8.0, 14.0, 22.0, 32.0, 48.0)
 QUICK_RELS = (-4.0, 0.0, 4.0, 8.0, 12.0)

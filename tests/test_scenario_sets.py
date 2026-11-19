@@ -1,7 +1,9 @@
 import numpy as np
 
+from experiments.matrix_setup import L1_SIM_KWARGS, SIM_KWARGS
 from experiments.scenario_sets import (
     LOG_DURATION,
+    LOG_PAD,
     SIM_DURATION,
     abort_cut_ins,
     boundary_grid,
@@ -10,8 +12,6 @@ from experiments.scenario_sets import (
 )
 from pbs.data import make_scenario
 from pbs.eval.counterfactual import is_benign
-
-SIM_KWARGS = {"duration": SIM_DURATION, "horizon": 30, "r_safe": 2.5}
 
 
 def test_boundary_grid_is_make_scenario_with_padded_logs():
@@ -26,7 +26,8 @@ def test_boundary_grid_is_make_scenario_with_padded_logs():
         duration=LOG_DURATION,
     )
     np.testing.assert_allclose(first.agents[0].y, expected.agents[0].y)
-    assert first.agents[0].t[-1] >= SIM_DURATION + 3.0 - 1e-9
+    assert LOG_PAD == 4.0
+    assert first.agents[0].t[-1] >= SIM_DURATION + 4.0 - 1e-9
 
 
 def test_tradeoff_set_keeps_a_grid_and_counts_aborts():
@@ -41,3 +42,4 @@ def test_aborts_are_benign():
     for scenario in abort_cut_ins():
         assert min(scenario.agents[0].y) > 2.5
         assert is_benign(scenario, **SIM_KWARGS)
+        assert is_benign(scenario, **L1_SIM_KWARGS)

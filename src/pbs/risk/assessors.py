@@ -148,7 +148,13 @@ class PredictiveAssessor(RiskAssessor):
             return assess_risk(ctx.ego_future, agent_future, ctx.dt, ctx.r_safe)
         angles = forecast_headings(forecast, [history.x[-1], history.y[-1]], history.heading[-1])
         if extra:
-            angles = np.interp(query, times, np.unwrap(np.r_[history.heading[-1], angles]))
+            unwrapped = np.unwrap(np.r_[history.heading[-1], angles])
+            agent_now = np.array([np.interp(age, times, xy[:, 0]), np.interp(age, times, xy[:, 1])])
+            agent_now_heading = float(np.interp(age, times, unwrapped))
+            angles = np.interp(query, times, unwrapped)
+        else:
+            agent_now = np.array([history.x[-1], history.y[-1]], dtype=float)
+            agent_now_heading = float(history.heading[-1])
         return assess_risk(
             ctx.ego_future,
             agent_future,
@@ -156,4 +162,9 @@ class PredictiveAssessor(RiskAssessor):
             ego_heading=ctx.ego_future_heading,
             agent_heading=angles,
             pedestrian=history.agent_type == "pedestrian",
+            ego_origin=ctx.ego_xy,
+            agent_origin=agent_now,
+            ego_origin_heading=ctx.ego_heading,
+            agent_origin_heading=agent_now_heading,
+            swept=True,
         )

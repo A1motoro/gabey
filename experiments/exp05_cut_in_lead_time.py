@@ -16,7 +16,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matrix_setup import LEAD_SYSTEMS, SIM_KWARGS, write_json
+from matrix_setup import LEAD_SYSTEMS, experiment_config, write_json
 from scenario_sets import boundary_grid
 
 from pbs.eval.plots import SYSTEM_COLORS
@@ -30,9 +30,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true", help="5×5 completed cut-ins")
     parser.add_argument(
+        "--legacy-l1",
+        action="store_true",
+        help="use legacy L1 circle geometry (r_safe=2.5) and single-threshold policy",
+    )
+    parser.add_argument(
         "--from-csv", type=Path, default=None, help="redraw the figure from a saved matrix"
     )
     args = parser.parse_args()
+    sim_kwargs, policy_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
     csv_path = ROOT / "outputs/logs/exp05.csv"
     figure_path = ROOT / "outputs/figures/exp05_lead_time.png"
     summary_path = ROOT / "outputs/logs/exp05_summary.json"
@@ -40,7 +46,13 @@ def main():
         frame = pd.read_csv(args.from_csv)
     else:
         scenarios = boundary_grid(quick=args.quick)
-        frame = run_matrix(LEAD_SYSTEMS, scenarios, [THRESHOLD], sim_kwargs=SIM_KWARGS)
+        frame = run_matrix(
+            LEAD_SYSTEMS,
+            scenarios,
+            [THRESHOLD],
+            sim_kwargs=sim_kwargs,
+            **policy_kwargs,
+        )
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(csv_path, index=False)
         frame = pd.read_csv(csv_path)
@@ -67,6 +79,7 @@ def main():
     }
     summary = {
         "quick": bool(args.quick) if not args.from_csv else None,
+        "config": None if args.from_csv else meta,
         "threshold_s": THRESHOLD,
         "n_rows": int(len(leads)),
         "median_lead_time_s": medians,
