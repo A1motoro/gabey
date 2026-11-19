@@ -39,8 +39,8 @@ def test_demo_matches_simulation_and_is_strict_json(rel_v):
         assert shown["ttc"] == [float(t) if np.isfinite(t) else None for t in direct.ttc]
     if rel_v == 5:
         assert result["systems"]["reactive"]["summary"]["brake_onset_t"] == pytest.approx(2)
-        assert result["systems"]["cv"]["summary"]["brake_onset_t"] == pytest.approx(1.1)
-        assert result["lead_time_s"] == pytest.approx(0.9)
+        assert result["systems"]["cv"]["summary"]["brake_onset_t"] == pytest.approx(1.0)
+        assert result["lead_time_s"] == pytest.approx(1.0)
         assert result["systems"]["reactive"]["summary"]["brake_count"] == 2
         assert result["systems"]["cv"]["summary"]["brake_count"] == 4
         for shown in result["systems"].values():
@@ -181,7 +181,7 @@ def test_http_assets_errors_and_results():
             assert 'href="/"' in presentation
         with urlopen(Request(base + "/api/simulate", data=b"{}")) as response:
             result = json.load(response)
-            assert result["lead_time_s"] == pytest.approx(0.9)
+            assert result["lead_time_s"] == pytest.approx(1.0)
         for path, body, status in [
             ("/api/simulate", b'{"gap_d":0}', 400),
             ("/api/simulate", b'{"gap_d":NaN}', 400),

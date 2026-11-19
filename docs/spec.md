@@ -73,7 +73,7 @@ CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Trans
 | --- | --- | --- |
 | exp01 | CV / CA / CTRV / LR | ADE/FDE vs horizon |
 | exp02 | CORE = Reactive / CV / CA / Oracle | 碰撞率 vs 误报率 trade-off |
-| exp03 | CORE | **四边界叠加图**；面积差 = prediction 收益 / 预测误差代价；对照刹停距离 `d = v·t_react + v²/(2a)` |
+| exp03 | CORE | **四边界叠加图**；面积差 = prediction 收益 / 预测误差代价；对照 1D 刹停下界 `d = 5.0 + v_rel²/(2a)`（L2 矩形车长 5.0 m；旧 L1 圆形为 `2.5 + v_rel²/(2a)`） |
 | exp04 | CV（+Reactive） | latency 敏感性 |
 | exp05 | Reactive vs CV / CTRV | cut-in lead time 分布 |
 

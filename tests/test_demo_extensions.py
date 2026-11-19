@@ -66,7 +66,8 @@ def test_reactive_contact_does_not_freeze_other_side_or_include_later_braking():
 
 def test_gap_five_is_supported_and_assessor_can_be_replaced_without_ui_changes():
     result = simulate({"gap_d": 5, "rel_v": 1})
-    assert all(s["summary"]["collision"] for s in result["systems"].values())
+    assert result["systems"]["reactive"]["summary"]["collision"]
+    assert not result["systems"]["cv"]["summary"]["collision"]
     calls = []
 
     def custom(name):
@@ -113,10 +114,10 @@ def test_five_metre_comparison_cases_reproduce_the_requested_table():
     cases = {
         duration: simulate({"gap_d": 5, "rel_v": 1, "lc_T": duration}) for duration in (3, 4, 5)
     }
-    for duration in (3, 4):
+    reactive_contacts = []
+    for duration in (3, 4, 5):
         sides = cases[duration]["systems"]
-        assert all(side["summary"]["collision"] for side in sides.values())
-        assert sides["reactive"]["first_collision_t"] < sides["cv"]["first_collision_t"]
-    slow = cases[5]["systems"]
-    assert slow["reactive"]["summary"]["collision"]
-    assert not slow["cv"]["summary"]["collision"]
+        assert sides["reactive"]["summary"]["collision"]
+        assert not sides["cv"]["summary"]["collision"]
+        reactive_contacts.append(sides["reactive"]["first_collision_t"])
+    assert reactive_contacts == sorted(reactive_contacts)

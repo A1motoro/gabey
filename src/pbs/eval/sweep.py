@@ -14,12 +14,39 @@ import pandas as pd
 
 from pbs.eval.counterfactual import is_benign
 from pbs.eval.metrics import evaluate
-from pbs.sim.policy import TTCThresholdPolicy
-from pbs.sim.simulator import run_sim
+from pbs.sim.policy import HysteresisPolicy, TTCThresholdPolicy
+from pbs.sim.simulator import DEFAULT_A_BRAKE, run_sim
 from pbs.systems import make_system
 from pbs.types import Scenario
 
 _TRUE = {"1", "true", "t", "yes"}
+
+
+def _parse_threshold(entry, policy_kind: str, hysteresis_gap: float) -> tuple[float, float]:
+    """Resolve one threshold specification into ``(t_on, t_off)``."""
+    if isinstance(entry, tuple | list):
+        if len(entry) != 2:
+            raise ValueError(f"threshold pair must have length 2, got {entry!r}")
+        t_on, t_off = float(entry[0]), float(entry[1])
+        if policy_kind == "threshold" and not np.isclose(t_on, t_off):
+            raise ValueError(
+                "threshold policy requires t_on == t_off; use policy_kind='hysteresis'"
+            )
+        return t_on, t_off
+    t_on = float(entry)
+    if policy_kind == "hysteresis":
+        return t_on, t_on + float(hysteresis_gap)
+    if policy_kind == "threshold":
+        return t_on, t_on
+    raise ValueError(f"unknown policy_kind: {policy_kind!r}")
+
+
+def _make_policy(policy_kind: str, t_on: float, t_off: float, a_brake: float):
+    if policy_kind == "hysteresis":
+        return HysteresisPolicy(t_on=t_on, t_off=t_off, a_brake=a_brake)
+    if policy_kind == "threshold":
+        return TTCThresholdPolicy(ttc_threshold=t_on, a_brake=a_brake)
+    raise ValueError(f"unknown policy_kind: {policy_kind!r}")
 
 
 def run_matrix(
@@ -30,22 +57,29 @@ def run_matrix(
     *,
     sim_kwargs=None,
     seed: int = 0,
+    policy_kind: str = "threshold",
+    hysteresis_gap: float = 1.0,
+    a_brake: float = DEFAULT_A_BRAKE,
 ) -> pd.DataFrame:
     """Run ``systems × scenarios × thresholds × latencies``.
 
-    Columns follow ``docs/d-baseline.md``: scenario id, kind, scalar scenario params,
-    system, threshold, latency, benign, collision, false_brake, min_dist,
-    brake_onset_t, seed, git_rev. The simulation itself is deterministic; ``seed``
-    is recorded so a later stochastic scenario can reuse the same table.
+    Columns follow ``docs/d-baseline.md`` and ``docs/l2-baseline.md``: scenario id,
+    kind, scalar scenario params, system, policy, threshold (= t_on), t_on, t_off,
+    latency, geometry, horizon, benign, collision, first_collision_t, false_brake,
+    min_dist, min_dist_until_contact, brake_onset_t, seed, git_rev.
     """
     if not scenarios:
         raise ValueError("scenarios is empty")
+    if policy_kind not in ("threshold", "hysteresis"):
+        raise ValueError(f"unknown policy_kind: {policy_kind!r}")
     sim_kwargs = dict(sim_kwargs or {})
     names = [str(name) for name in systems]
-    threshold_list = [float(value) for value in thresholds]
+    threshold_pairs = [_parse_threshold(value, policy_kind, hysteresis_gap) for value in thresholds]
     latency_list = [float(value) for value in latencies]
-    if not names or not threshold_list or not latency_list:
+    if not names or not threshold_pairs or not latency_list:
         raise ValueError("systems, thresholds, and latencies must be non-empty")
+    geometry = "circle" if sim_kwargs.get("r_safe") is not None else "obb"
+    horizon = int(sim_kwargs.get("horizon", 30))
     param_keys = _param_keys(scenarios)
     revision = _git_rev()
     benign_cache: dict[str, bool] = {}
@@ -58,24 +92,32 @@ def run_matrix(
         params = {key: _scalar(scenario.params.get(key)) for key in param_keys}
         for name in names:
             assessor = make_system(name)
-            for threshold in threshold_list:
-                policy = TTCThresholdPolicy(ttc_threshold=threshold)
+            for t_on, t_off in threshold_pairs:
+                policy = _make_policy(policy_kind, t_on, t_off, float(a_brake))
                 for latency in latency_list:
                     log = run_sim(scenario, assessor, policy, latency=latency, **sim_kwargs)
                     metrics = evaluate(log, benign)
                     onset = metrics["brake_onset_t"]
+                    contact = metrics["first_collision_t"]
                     rows.append(
                         {
                             "scenario_id": sid,
                             "kind": scenario.kind,
                             **params,
                             "system": name,
-                            "threshold": threshold,
+                            "policy": policy_kind,
+                            "threshold": t_on,
+                            "t_on": t_on,
+                            "t_off": t_off,
                             "latency": latency,
+                            "geometry": geometry,
+                            "horizon": horizon,
                             "benign": benign,
                             "collision": bool(metrics["collision"]),
+                            "first_collision_t": np.nan if contact is None else float(contact),
                             "false_brake": bool(metrics["false_brake"]),
                             "min_dist": float(metrics["min_dist"]),
+                            "min_dist_until_contact": float(metrics["min_dist_until_contact"]),
                             "brake_onset_t": np.nan if onset is None else float(onset),
                             "seed": int(seed),
                             "git_rev": revision,
@@ -258,7 +300,7 @@ def _as_bool(series: pd.Series) -> pd.Series:
         return series.fillna(0).astype(bool)
 
     def one(value):
-        if isinstance(value, (bool, np.bool_)):
+        if isinstance(value, bool | np.bool_):
             return bool(value)
         if pd.isna(value):
             return False
@@ -278,11 +320,11 @@ def _param_keys(scenarios: list[Scenario]) -> list[str]:
 
 
 def _scalar(value):
-    if isinstance(value, (bool, np.bool_)):
+    if isinstance(value, bool | np.bool_):
         return bool(value)
-    if isinstance(value, (int, np.integer)):
+    if isinstance(value, int | np.integer):
         return int(value)
-    if isinstance(value, (float, np.floating)):
+    if isinstance(value, float | np.floating):
         return float(value)
     if isinstance(value, str):
         return value

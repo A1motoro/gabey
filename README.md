@@ -33,8 +33,8 @@ pip install -e .                   # 使 `import pbs` 可用
 pytest                             # smoke test
 python experiments/exp00_l1_baseline.py  # P 的 L1 验证（CV / TTC / Reactive）
 python experiments/exp00_scenarios.py    # A 的 M1 场景基线（96 个场景 + no-braking 判定）
-python experiments/exp02_threshold_sweep.py --quick   # D：旧配置的碰撞率–误报率
-python experiments/exp03_failure_boundary.py --quick  # D：旧配置的四条 failure boundary
+python experiments/exp02_threshold_sweep.py --quick   # D：L2 基线的碰撞率–误报率（旧口径加 --legacy-l1）
+python experiments/exp03_failure_boundary.py --quick  # D：L2 基线的四条 failure boundary（旧口径加 --legacy-l1）
 ```
 
 ### P 的 L1 基线验证
@@ -53,7 +53,7 @@ Windows 未激活环境时，可使用 `conda run --no-capture-output -n aie1903
 验证脚本用独立的解析轨迹样例生成 CV ADE/FDE 曲线和 Reactive/CV cut-in timeline，
 产出位于 `outputs/figures/l1-baseline/`。样例用于验证 P 的方法，不替代 A 的场景模块或
 D 的实验矩阵。CA、CTRV、Oracle 已在 L2 实现，LR 已在 P 的 L3 实现。
-D 的已合入实验见 [docs/d-baseline.md](docs/d-baseline.md) §9。当前 `exp02`、`exp03`、`exp05` 的 `--quick` 使用原单阈值和圆形配置，待 D 对齐 L2 基线。
+D 的已合入实验见 [docs/d-baseline.md](docs/d-baseline.md) §9。当前 `exp02`、`exp03`、`exp05` 默认已对齐 [L2 基线规范](docs/l2-baseline.md)（定向矩形 + 滞回制动 + 4 s 时域 + Swept TTC），传入 `--legacy-l1` 可复现原单阈值与圆形配置。
 `exp04` 属于 L3。场景由 A 的 `make_scenario` / `scenario_set` 生成，exp02 另加 6 个中止换道。
 测试结果和复现说明见 [docs/l1-validation.md](docs/l1-validation.md)。
 

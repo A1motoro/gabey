@@ -14,7 +14,8 @@ def plot_timeline(log: SimLog, ax=None, label: str = "ego"):
     ax = ax or plt.gca()
     (line,) = ax.plot(log.t, log.ego_v, label=f"{label} v [m/s]")
     step = log.t[1] - log.t[0]
-    for ti, a in zip(log.t, log.action, strict=True):
+    end = log.executed_steps if log.executed_steps is not None else len(log.t)
+    for ti, a in zip(log.t[:end], log.action[:end], strict=True):
         if a == "brake":
             ax.axvspan(ti, ti + step, color=line.get_color(), alpha=0.12, lw=0)
     ax.set_xlabel("t [s]")
@@ -98,17 +99,32 @@ def plot_boundaries(df, systems, ax=None, threshold=None, latency=None, labels=N
     return ax
 
 
-def plot_stopping_distance(ax, t_react: float, a_brake: float = 6.0, rel_max: float | None = None):
-    """Analytic gap needed to cancel ``rel_v``: d = rel_v·t_react + rel_v²/(2a)."""
+def plot_stopping_distance(
+    ax,
+    t_react: float = 0.0,
+    a_brake: float = 6.0,
+    rel_max: float | None = None,
+    *,
+    clearance: float = 0.0,
+    label: str | None = None,
+):
+    """Analytic 1D longitudinal stopping gap: d = clearance + rel_v·t_react + rel_v²/(2a)."""
     upper = rel_max if rel_max is not None else max(float(ax.get_ylim()[1]), 1.0)
     rel = np.linspace(0.0, max(upper, 0.0), 80)
-    gap = rel * t_react + rel**2 / (2.0 * a_brake)
+    gap = clearance + rel * t_react + rel**2 / (2.0 * a_brake)
+    if label is None:
+        parts = [f"a={a_brake:g}m/s²"]
+        if clearance > 0:
+            parts.append(f"L={clearance:g}m")
+        if t_react > 0:
+            parts.append(f"t_react={t_react:g}s")
+        label = f"1D stopping limit ({', '.join(parts)})"
     ax.plot(
         gap,
         rel,
         color="black",
         linestyle="--",
         linewidth=1.0,
-        label=f"stopping gap, t={t_react:.1f}s",
+        label=label,
     )
     return ax
