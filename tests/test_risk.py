@@ -174,3 +174,20 @@ def test_predictive_assessor_l2_uses_swept_ttc():
     est = PredictiveAssessor(ConstantVelocityPredictor()).assess(ctx, cutter)
     assert est.conflict_step == 0
     assert est.ttc == pytest.approx(0.1 * (6.0 - 3.75) / 12.0, abs=1e-6)
+
+
+def test_predictive_assessor_l1_circle_stays_discrete():
+    # Explicit r_safe selects the legacy L1 discrete circle check (no substep sweep).
+    ctx = context(ego_v=0.0, horizon=5, dt=0.1)
+    ctx.r_safe = 2.5
+    cutter = history(x=0.0, y=-6.0, vx=0.0, vy=120.0, t_last=0.0)
+    est = PredictiveAssessor(ConstantVelocityPredictor()).assess(ctx, cutter)
+    assert np.isinf(est.ttc)
+    assert est.conflict_step is None
+
+
+def test_assess_risk_swept_requires_origins():
+    ego = np.array([[0.0, 0.0], [1.0, 0.0]])
+    agent = np.array([[0.0, 5.0], [0.0, 4.0]])
+    with pytest.raises(ValueError, match="ego_origin and agent_origin"):
+        assess_risk(ego, agent, dt=0.1, swept=True)

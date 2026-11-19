@@ -46,14 +46,14 @@ policy.decide(ttc) → brake / cruise
 | M1 | `prediction_slices(scenario, history, horizon, stride) -> list[PredictionSlice]` | A | ✅ 新增（CA） |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
 | M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV / CA / CTRV / Oracle ✅ L2；LR ✅ L3 |
-| Risk | `assess_risk(ego_future, agent_future, dt, r_safe=None, *, ego_heading=None, agent_heading=None, pedestrian=False) -> RiskEstimate` | P | 第 k 行时间为 `(k+1)*dt`。几何规则见 [L2 基线](l2-baseline.md#制动与碰撞) |
-| Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L1；Predictive 将延迟观测的预测对齐当前时间 |
+| Risk | `assess_risk(ego_future, agent_future, dt, r_safe=None, *, ego_heading=None, agent_heading=None, pedestrian=False, ego_origin=None, agent_origin=None, ego_origin_heading=None, agent_origin_heading=None, swept=False) -> RiskEstimate` | P | `swept=False` 时第 k 行时间为 `(k+1)*dt`；`swept=True` 时必须同时提供 `ego_origin` 与 `agent_origin`，按步间线性扫掠（中点航向）返回连续 TTC `(k + fraction)·dt`。几何规则见 [L2 基线](l2-baseline.md#制动与碰撞) |
+| Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L2；Predictive 将延迟观测对齐当前时间；L2 矩形模式（`r_safe=None`）自动传起点并启用 `swept=True`，L1 圆形模式保持离散 |
 | M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency, collision_dt, …) -> SimLog` | C | 已实现 L2 闭环 |
 | M3 | `ego_rollout(path, s, v, horizon, dt)`、`in_collision(p, q, r_safe)` | C | ✅ |
 | M3 | `HysteresisPolicy(t_on, t_off, a_brake)`、`NeverBrakePolicy`、`TTCThresholdPolicy(ttc_threshold, a_brake)` | C | 依次用于 L2 主实验、无制动对照和 L1 复现 |
 | M4 | `make_system(name)`；`SYSTEMS`、`CORE` | D | ✅ |
-| M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
-| M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`rescue_rate`、`plot_boundaries` | D | ✅ L2；`exp04` latency 仍为 L3 |
+| M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ L2；`evaluate` 额外返回 `first_collision_t` 与 `min_dist_until_contact`，并按首次接触截断 `brake_onset_t` |
+| M4 | `run_matrix(..., policy_kind="threshold", hysteresis_gap=1.0, a_brake=6.0)`、`tradeoff`、`failure_boundary`、`safe_area`、`rescue_rate`、`plot_boundaries` | D | ✅ L2；支持滞回策略并记录 `policy`/`t_on`/`t_off`/`geometry`/`horizon`/`first_collision_t`/`min_dist_until_contact`；`exp04` latency 仍为 L3 |
 
 ### M2 追加：P L2（2026-11-18）
 

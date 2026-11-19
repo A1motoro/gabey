@@ -4,13 +4,14 @@ import json
 from pathlib import Path
 
 import numpy as np
+
+from pbs.sim.collision import R_SAFE, VEHICLE_LENGTH
+from pbs.systems import CORE
+
 try:
     from scenario_sets import SIM_DURATION
 except ModuleNotFoundError:
     from experiments.scenario_sets import SIM_DURATION
-
-from pbs.sim.collision import R_SAFE, VEHICLE_LENGTH
-from pbs.systems import CORE
 
 SIM_KWARGS = {"duration": SIM_DURATION, "horizon": 40, "r_safe": None}
 POLICY_KWARGS = {"policy_kind": "hysteresis", "hysteresis_gap": 1.0, "a_brake": 6.0}
@@ -61,13 +62,13 @@ def write_json(path: Path, payload) -> None:
 def _jsonable(value):
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_jsonable(item) for item in value]
-    if isinstance(value, (np.floating, float)):
+    if isinstance(value, np.floating | float):
         number = float(value)
         return None if np.isnan(number) else number
-    if isinstance(value, (np.integer, int)) and not isinstance(value, bool):
+    if isinstance(value, np.integer | int) and not isinstance(value, bool):
         return int(value)
-    if isinstance(value, (np.bool_, bool)):
+    if isinstance(value, np.bool_ | bool):
         return bool(value)
     return value

@@ -24,12 +24,14 @@ _TRUE = {"1", "true", "t", "yes"}
 
 def _parse_threshold(entry, policy_kind: str, hysteresis_gap: float) -> tuple[float, float]:
     """Resolve one threshold specification into ``(t_on, t_off)``."""
-    if isinstance(entry, (tuple, list)):
+    if isinstance(entry, tuple | list):
         if len(entry) != 2:
             raise ValueError(f"threshold pair must have length 2, got {entry!r}")
         t_on, t_off = float(entry[0]), float(entry[1])
         if policy_kind == "threshold" and not np.isclose(t_on, t_off):
-            raise ValueError("threshold policy requires t_on == t_off; use policy_kind='hysteresis'")
+            raise ValueError(
+                "threshold policy requires t_on == t_off; use policy_kind='hysteresis'"
+            )
         return t_on, t_off
     t_on = float(entry)
     if policy_kind == "hysteresis":
@@ -298,7 +300,7 @@ def _as_bool(series: pd.Series) -> pd.Series:
         return series.fillna(0).astype(bool)
 
     def one(value):
-        if isinstance(value, (bool, np.bool_)):
+        if isinstance(value, bool | np.bool_):
             return bool(value)
         if pd.isna(value):
             return False
@@ -318,11 +320,11 @@ def _param_keys(scenarios: list[Scenario]) -> list[str]:
 
 
 def _scalar(value):
-    if isinstance(value, (bool, np.bool_)):
+    if isinstance(value, bool | np.bool_):
         return bool(value)
-    if isinstance(value, (int, np.integer)):
+    if isinstance(value, int | np.integer):
         return int(value)
-    if isinstance(value, (float, np.floating)):
+    if isinstance(value, float | np.floating):
         return float(value)
     if isinstance(value, str):
         return value

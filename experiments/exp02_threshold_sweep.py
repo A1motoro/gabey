@@ -78,7 +78,7 @@ def main():
     one = one[np.isclose(one["threshold"].astype(float), float(one["threshold"].iloc[0]))]
     one = one[np.isclose(one["latency"].astype(float), float(one["latency"].iloc[0]))]
     benign = one["benign"].map(
-        lambda value: bool(value) if isinstance(value, (bool, np.bool_)) else str(value) == "True"
+        lambda value: bool(value) if isinstance(value, bool | np.bool_) else str(value) == "True"
     )
     summary = {
         "quick": bool(args.quick) if not args.from_csv else None,

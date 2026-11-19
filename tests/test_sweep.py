@@ -290,9 +290,16 @@ def test_run_matrix_l2_hysteresis_and_obb_schema():
         policy_kind="hysteresis",
         hysteresis_gap=1.0,
     )
-    assert {"policy", "t_on", "t_off", "geometry", "horizon", "first_collision_t", "min_dist_until_contact"} <= set(
-        frame.columns
-    )
+    expected_cols = {
+        "policy",
+        "t_on",
+        "t_off",
+        "geometry",
+        "horizon",
+        "first_collision_t",
+        "min_dist_until_contact",
+    }
+    assert expected_cols <= set(frame.columns)
     assert set(frame["policy"]) == {"hysteresis"}
     assert set(frame["geometry"]) == {"obb"}
     assert set(frame["horizon"]) == {40}

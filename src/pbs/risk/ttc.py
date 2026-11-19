@@ -24,7 +24,9 @@ def forecast_headings(points, origin, initial_heading):
     return angles[indices]
 
 
-def _segment_headings(future_heading, origin_heading, n_steps: int) -> tuple[np.ndarray, np.ndarray]:
+def _segment_headings(
+    future_heading, origin_heading, n_steps: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Return per-segment midpoint headings and step-end headings for swept checks."""
     arr = np.asarray(future_heading, dtype=float)
     if arr.ndim == 0:
@@ -57,7 +59,8 @@ def assess_risk(
 
     An explicit ``r_safe`` uses legacy circles. When ``swept=True``, each step
     interval ``[k·dt, (k+1)·dt]`` is swept linearly using ``swept_contact_fraction``
-    so fast crossings cannot tunnel between discrete 0.1 s samples.
+    so fast crossings cannot tunnel between discrete 0.1 s samples; both
+    ``ego_origin`` and ``agent_origin`` are required to sweep the first interval.
     """
     ego = np.asarray(ego_future, dtype=float)
     agent = np.asarray(agent_future, dtype=float)
@@ -67,6 +70,8 @@ def assess_risk(
         raise ValueError("future positions must be finite")
     if not np.isfinite(dt) or dt <= 0:
         raise ValueError("dt must be finite and positive")
+    if swept and (ego_origin is None or agent_origin is None):
+        raise ValueError("swept=True requires both ego_origin and agent_origin")
     if not len(ego):
         if r_safe is not None and (not np.isfinite(r_safe) or r_safe < 0):
             raise ValueError("r_safe must be finite and non-negative")

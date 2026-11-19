@@ -1,6 +1,6 @@
 # D 的 Evaluation Baseline（M4 · `pbs.eval` / `pbs.systems`）
 
-> 本页记录 D 在 PR #8 中验证的单阈值与圆形实验。后续矩阵以 [L2 基线规范](l2-baseline.md)为准，接入工作由 D 负责。
+> `pbs.eval` 与 `exp02` / `exp03` / `exp05` 已对齐 [L2 基线规范](l2-baseline.md)（定向矩形 `r_safe=None` + 滞回制动 `HysteresisPolicy(t_on, t_on+1.0, a_brake=6.0)` + `horizon=40` + Swept TTC）；传入 `--legacy-l1` 可复现原 PR #8 的单阈值与圆形配置。
 
 PR #8 审核修正（2026-11-18）：没有阈值满足误刹预算时，先选择最低误刹率；
 场景 ID 纳入完整轨迹、路径和几何参数，避免不同中间运动错误共享 benign 标签；
@@ -59,12 +59,15 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 | `kind` | str | `Scenario.kind` |
 | `gap_d`, `rel_v`, …（展开 `params`） | float | A |
 | `system` | str | `SYSTEMS` 的 key |
-| `threshold` | float | `TTCThresholdPolicy.ttc_threshold` [s] |
+| `policy` | str | `"hysteresis"`（L2 默认）或 `"threshold"`（L1） |
+| `threshold`, `t_on`, `t_off` | float | 进入/退出 TTC 阈值 [s]；`threshold = t_on` 兼容旧 groupby |
 | `latency` | float | `run_sim(latency=)` [s] |
+| `geometry`, `horizon` | str / int | `"obb"` / `"circle"` 与预测步数（L2 默认 40） |
 | `benign` | bool | `is_benign`（按 `scenario_id` 缓存） |
 | `collision`, `false_brake` | bool | `evaluate` |
-| `min_dist` | float | `evaluate` [m] |
-| `brake_onset_t` | float / NaN | `evaluate` [s] |
+| `first_collision_t` | float / NaN | `evaluate` [s]，首次接触时刻 |
+| `min_dist`, `min_dist_until_contact` | float | `evaluate` [m]；L2 报告优先采用 `min_dist_until_contact` |
+| `brake_onset_t` | float / NaN | `evaluate` [s]（已按 `first_collision_t` 截断碰撞后刹车） |
 | `seed`, `git_rev` | str | 复现用 |
 
 - 结果写 `outputs/logs/expXX.csv`；画图脚本只读 CSV，不重跑仿真。
@@ -77,7 +80,7 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 | --- | --- | --- | --- | --- | --- |
 | exp05（与 P） | prediction 让刹车提前几秒？ | cut_in 场景集；Reactive vs CV / CTRV | lead time 分布 + 未刹车计数 | F2 | W8 |
 | exp02 | 每个系统的安全–误报 trade-off？ | `CORE` × 阈值 0.5–3.0 s | collision rate vs false-brake rate，每系统一条曲线 | F3 | W8 → W11 |
-| exp03 | prediction 把安全区扩大多少？ | `CORE` × (gap_d, rel_v) 网格，固定工作点 | 四条 boundary 叠加 + rescue rate；叠刹停距离 `d = v·t_react + v²/(2a)` | **F4** | W9 → W11 |
+| exp03 | prediction 把安全区扩大多少？ | `CORE` × (gap_d, rel_v) 网格，固定工作点 | 四条 boundary 叠加 + rescue rate；叠 1D 制动下界 `d = 5.0 + v_rel²/(2×6)` | **F4** | W9 → W11 |
 | exp04（可砍） | 感知延迟的代价？ | latency 0–300 ms × {Reactive, CV} | collision rate / rescue rate vs latency | F5 | W11 |
 
 ### 5.1 `tradeoff`
@@ -115,12 +118,12 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 > - **Will not demonstrate**：真实交通分布或真实车辆上的 AEB 性能；perception 误差（仅用 latency 近似）；转向避让。
 > - **Fairness**：危险 / 良性由与系统无关的 counterfactual 判定；系统间在相同误报率下比较，而非仅在相同阈值下比较。
 
-## 9. L2 quick 结果（2026-11-18）
+## 9. L2 quick 结果（2026-11-20，定向矩形 + 滞回 + Swept TTC）
 
-场景全部来自 A 的 `pbs.data`，组装在 `experiments/scenario_sets.py`。所有场景都用 `duration=18` 生成、仿真 15 s：日志比仿真长一个 3 s 预测时域，避免 Oracle 把轨迹末端当成停车。
+场景全部来自 A 的 `pbs.data`，组装在 `experiments/scenario_sets.py`。所有场景都用 `duration=19`（`LOG_PAD=4.0 s`）生成、仿真 15 s：日志比仿真长一个 4 s 预测时域（`horizon=40`），避免 Oracle 把轨迹末端当成停车。默认采用 L2 闭环配置：`r_safe=None`（5.0 m × 2.5 m 定向矩形）、`HysteresisPolicy(t_on, t_on + 1.0, a_brake=6.0)` 与 Predictive Swept TTC；追加 `--legacy-l1` 可复现原 PR #8 的圆形 + 单阈值配置（碰撞与 rescue 数值一致；由于 `evaluate()` 现按 `first_collision_t` 截断碰撞后触发的刹车，`exp05` 在旧口径下会移除 1 例碰撞后 Reactive 刹车统计）。
 
-- exp03 / exp05：`make_scenario("cut_in", lc_T=3.0)` 在 (gap_d, rel_v) 平面上的密网格。`--quick` 为 5×5（gap 8–48 m，rel_v −4–12 m/s）。A 的 `DEFAULT_GRID` 注明了密扫由 D 负责。
-- exp02：A 的 `scenario_set()`（切入 60、前车制动 20、横穿 16，无被拒组合）加 `ca_scenario_set()` 中 `a_cutter = ±2` 的 8 个，再加 6 个中止换道，共 110 个。中止换道是 A 的生成器没有的一类：切入车向本车道靠近后返回，最近距离仍大于 `r_safe`。三条命令合计约 110 s。
+- exp03 / exp05：`make_scenario("cut_in", lc_T=3.0)` 在 (gap_d, rel_v) 平面上的密网格。`--quick` 为 5×5（gap 8–48 m，rel_v −4–12 m/s）。A 的 `DEFAULT_GRID` 注明了密扫由 D 负责。`exp03` 叠加的理论参照曲线已修正为零延迟 1D 物理制动极限 $d = 5.0 + v_{\text{rel}}^2 / (2 \times 6.0)$（L2 矩形车长 5.0 m；`--legacy-l1` 下为 $2.5 + v_{\text{rel}}^2 / (2 \times 6.0)$）。
+- exp02：A 的 `scenario_set()`（切入 60、前车制动 20、横穿 16，无被拒组合）加 `ca_scenario_set()` 中 `a_cutter = ±2` 的 8 个，再加 6 个中止换道，共 110 个。中止换道是 A 的生成器没有的一类：切入车向本车道靠近后返回，在 L2 矩形几何与 L1 圆形几何下均保持 benign。
 
 ```bash
 python experiments/exp02_threshold_sweep.py --quick
@@ -128,21 +131,21 @@ python experiments/exp03_failure_boundary.py --quick
 python experiments/exp05_cut_in_lead_time.py --quick
 ```
 
-边界网格 25 个切入里 12 个 dangerous、13 个 benign。在 false-brake ≤ 5% 的工作点上（这组粗网格里与固定 2.0 s 的 rescue 相同）：
+边界网格 25 个切入里 **14 个 dangerous、11 个 benign**。在 false-brake ≤ 5% 的工作点上（这组粗网格里与固定 `t_on = 2.0 s` / `t_off = 3.0 s` 的 rescue 相同）：
 
 | 系统 | rescue rate | 含义 |
 | --- | ---: | --- |
-| Reactive | 0.583 | |
-| CV | 0.833 | rescue(CV) − rescue(Reactive) = **0.25**，prediction 的收益 |
-| CA | 0.833 | 与 CV 相同；这段 quintic 上常加速度没有分开 |
-| Oracle | 1.000 | rescue(Oracle) − rescue(CV) = **0.17**，预测误差的代价 |
+| Reactive | 0.429 | 6 / 14 dangerous 救下 |
+| CV | 0.643 | 9 / 14；rescue(CV) − rescue(Reactive) = **0.214**，prediction 的收益 |
+| CA | 0.643 | 与 CV 相同；这段无纵向加减速的 quintic 上常加速度没有分开 |
+| Oracle | 0.857 | 12 / 14；rescue(Oracle) − rescue(CV) = **0.214**，预测误差的代价 |
 
-exp02 共 56 个 dangerous、54 个 benign。2.0 s 时碰撞率 Reactive 0.196、CV 0.107、CA 0.089、Oracle 0.071；误报率 Reactive 0.037、CV / CA 0.056、Oracle 0.019。1.0 s 时四个系统的碰撞率都在 0.38–0.43，阈值并不是免费的。分类来看：
+exp02 共 **57 个 dangerous、53 个 benign**。`t_on = 2.0 s`（`t_off = 3.0 s`）时碰撞率严格递减：Reactive **0.246**、CV **0.123**、CA **0.070**、Oracle **0.035**；误报率 Reactive **0.075**、CV / CA **0.132**、Oracle **0.057**。`t_on = 1.0 s`（`t_off = 2.0 s`）时四个系统的碰撞率在 0.368–0.474。分类来看（`t_on = 2.0 s`）：
 
-- 切入（A 的网格）：没有系统误报。碰撞率 Reactive 0.148、CV / CA 0.037、Oracle 0。
-- 前车制动：4 个 benign 里有 1 个四个系统都会刹（慢速制动的前车在 15 s 内没追上），误报率同为 0.25。2.0 s 时 CA 和 Oracle 无碰撞，CV 与 Reactive 各 1 例。
-- 横穿：2.0 s 时预测系统的碰撞率都是 0.444，Reactive 是 0.667；有 4 个连 Oracle 也躲不开。
-- CA 切片（`a_cutter = ±2`）：4 个 dangerous 场景所有系统都躲开了，这组粗网格还分不开 CA 和 CV。
-- 中止换道：CV 和 CA 的误报率在 2.0 s 时是 0.33，Reactive 和 Oracle 为 0。prediction 误判切入的代价只在这组上能看到；去掉它，CV 的误报率从 0.056 降到 0.021，`exp02_summary.json` 里两组数都有。
+- 切入（A 的网格，28 dangerous / 32 benign）：四个系统误报率均为 0.0625（2/32）；碰撞率 Reactive 0.250、CV 0.143、CA 0.071、Oracle 0.000。
+- 前车制动（16 dangerous / 4 benign）：4 个 benign 里有 1 个四个系统都会刹，误报率同为 0.250；CA 与 Oracle 无碰撞，CV 与 Reactive 各 1 例（0.0625）。
+- 横穿（9 dangerous / 7 benign）：预测系统（CV / CA / Oracle）碰撞率均为 0.222（2/9）、误报率均为 0；Reactive 碰撞率 0.667（6/9）、误报率 0.143（1/7）。
+- CA 切片（`a_cutter = ±2`，4 dangerous / 4 benign）：所有系统碰撞率与误报率均为 0。
+- 中止换道（6 benign）：CV 和 CA 的误报率在 2.0 s 时均为 0.667（4/6），Reactive 和 Oracle 为 0。去掉中止换道后，CV / CA 的误报率从 0.132 降到 0.064，`exp02_summary.json` 里两组数都有保留。
 
-exp05 的 lead time 是双峰的，不能只报中位数。双方都刹车时中位数是 −0.1 s：切入完成后只剩纵向跟车，Reactive 的连续 TTC 比离散预测早大约一个仿真步。CV 真正更早的那些场景中位数是 0.9 s（CTRV 1.1 s），而且就是 CV 躲开、Reactive 撞上的格子。另有 2 个场景只有预测系统刹车，但刹得太晚，仍然碰撞。
+exp05（`t_on = 2.0 s` / `t_off = 3.0 s`）需同时报告全体双刹中位数与显著提前中位数：双方都刹车（`both`，各 9 例）的**全体中位数**为 CV **0.4 s**、CTRV **0.5 s**；预测显著更早（`lead_time > 0.3 s`）子集的**中位数**为 CV **1.0 s**、CTRV **1.2 s**。另有 5 例为 `predictive_only`（仅预测系统在接触前触发有效刹车），11 例 `neither`。
