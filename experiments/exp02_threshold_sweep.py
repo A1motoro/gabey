@@ -4,6 +4,8 @@ Scenarios: A's default grid (cut_in, lead_brake, crossing), A's CA slice, and si
 aborted cut-ins. On A's cut-ins alone no system ever false-brakes, so the cost of a
 wrong cut-in prediction would not show; the aborts lean toward the lane and return
 outside r_safe. The summary reports the curve with and without them, and per family.
+Brakes are scored for 15 s and collisions for 19 s; scenarios whose never-brake contact
+falls in between are in neither rate and are listed under ``late_contact`` in the summary.
 Output: outputs/figures/exp02_tradeoff.png and outputs/logs/exp02.csv. The figure is
 drawn from the CSV.
 """
@@ -28,7 +30,7 @@ from matrix_setup import (
 from scenario_sets import kind_label, tradeoff_set
 
 from pbs.eval.plots import SYSTEM_COLORS
-from pbs.eval.sweep import run_matrix, scenario_id, tradeoff
+from pbs.eval.sweep import late_contact_outcomes, run_matrix, scenario_id, tradeoff
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,7 +47,7 @@ def main():
         "--from-csv", type=Path, default=None, help="redraw the figure from a saved matrix"
     )
     args = parser.parse_args()
-    sim_kwargs, policy_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
+    sim_kwargs, matrix_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
     csv_path = ROOT / "outputs/logs/exp02.csv"
     figure_path = ROOT / "outputs/figures/exp02_tradeoff.png"
     summary_path = ROOT / "outputs/logs/exp02_summary.json"
@@ -60,7 +62,7 @@ def main():
             scenarios,
             thresholds,
             sim_kwargs=sim_kwargs,
-            **policy_kwargs,
+            **matrix_kwargs,
         )
         families = {scenario_id(s): kind_label(s) for s in scenarios}
         frame.insert(2, "family", frame["scenario_id"].map(families))
@@ -80,30 +82,48 @@ def main():
     benign = one["benign"].map(
         lambda value: bool(value) if isinstance(value, bool | np.bool_) else str(value) == "True"
     )
+    if "label" in one.columns:
+        late = one["label"] == "late_contact"
+    else:
+        late = pd.Series(False, index=one.index)
+    oracle = table.loc[table["system"] == "oracle"]
     summary = {
         "quick": bool(args.quick) if not args.from_csv else None,
         "config": None if args.from_csv else meta,
         "n_rows": int(len(frame)),
         "n_scenarios": int(len(one)),
         "n_benign_scenarios": int(benign.sum()),
-        "n_dangerous_scenarios": int((~benign).sum()),
+        "n_dangerous_scenarios": int((~benign & ~late).sum()),
+        "n_late_contact_scenarios": int(late.sum()),
         "scenario_counts": counts,
         "tradeoff": table.to_dict(orient="records"),
         "tradeoff_without_aborts": team_only.to_dict(orient="records"),
         "tradeoff_by_family": by_family,
         "false_brake_identically_zero": bool((table["false_brake_rate"].fillna(0) == 0).all()),
+        "oracle_false_brake_free": (
+            bool((oracle["false_brake_rate"].fillna(0) == 0).all()) if len(oracle) else None
+        ),
+        "late_contact": late_contact_outcomes(frame).to_dict(orient="records"),
+        "late_contact_scenarios": _late_scenarios(one.loc[late]),
         "csv": str(csv_path),
         "figure": str(figure_path),
     }
     write_json(summary_path, summary)
     printable = {
-        key: value for key, value in summary.items() if not key.startswith("tradeoff")
+        key: value
+        for key, value in summary.items()
+        if not key.startswith("tradeoff") and not key.startswith("late_contact")
     }
     print(json.dumps(printable, indent=2))
     print(table.to_string(index=False))
     print("without aborts:")
     print(team_only.to_string(index=False))
     print(f"Artifacts: {figure_path.resolve()}")
+
+
+def _late_scenarios(rows: pd.DataFrame) -> list[dict]:
+    keep = ["scenario_id", "family", "never_brake_contact_t"]
+    return rows[[column for column in keep if column in rows.columns]].to_dict(orient="records")
 
 
 def _plot(table: pd.DataFrame, path: Path) -> None:

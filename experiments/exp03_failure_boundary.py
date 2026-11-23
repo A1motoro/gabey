@@ -50,7 +50,7 @@ def main():
         "--from-csv", type=Path, default=None, help="redraw the figure from a saved matrix"
     )
     args = parser.parse_args()
-    sim_kwargs, policy_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
+    sim_kwargs, matrix_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
     csv_path = ROOT / "outputs/logs/exp03.csv"
     figure_path = ROOT / "outputs/figures/exp03_boundaries.png"
     summary_path = ROOT / "outputs/logs/exp03_summary.json"
@@ -67,7 +67,7 @@ def main():
             scenarios,
             thresholds,
             sim_kwargs=sim_kwargs,
-            **policy_kwargs,
+            **matrix_kwargs,
         )
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(csv_path, index=False)
@@ -85,6 +85,7 @@ def main():
         "quick": bool(args.quick) if not args.from_csv else None,
         "config": None if args.from_csv else meta,
         "stopping_clearance_m": float(clearance),
+        "cells": _cell_counts(frame),
         "operating_point": chosen.to_dict(orient="records"),
         "rescue": rescue,
         "value_of_prediction": _delta(rescue["budget"], "cv", "reactive"),
@@ -107,6 +108,17 @@ def _infer_clearance(frame: pd.DataFrame, default: float) -> float:
         if geom == "obb":
             return float(VEHICLE_LENGTH)
     return float(default)
+
+
+def _cell_counts(frame: pd.DataFrame) -> dict:
+    """Cells per class. Tables written before the ``label`` column have two classes."""
+    cells = frame.drop_duplicates("scenario_id")
+    if "label" in cells.columns:
+        labels = cells["label"]
+    else:
+        benign = cells["benign"].astype(str).str.lower() == "true"
+        labels = benign.map({True: "benign", False: "dangerous"})
+    return {name: int((labels == name).sum()) for name in ("dangerous", "late_contact", "benign")}
 
 
 def _rows_at(frame: pd.DataFrame, chosen: pd.DataFrame) -> pd.DataFrame:
