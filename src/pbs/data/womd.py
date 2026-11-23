@@ -143,7 +143,7 @@ def _time_grid(scene):
 
 def _window(scene, anchor, duration, history_steps):
     times = _time_grid(scene)
-    if not isinstance(anchor, (int, np.integer)) or isinstance(anchor, bool):
+    if not isinstance(anchor, int | np.integer) or isinstance(anchor, bool):
         raise ValueError("anchor must be an integer frame index")
     if not isinstance(history_steps, int) or isinstance(history_steps, bool) or history_steps < 20:
         raise ValueError("Require at least 20 history steps")
@@ -281,7 +281,7 @@ def real_scenario(
     window = _window(scene, anchor, duration, history_steps)
     ego_index, ego_xy, ego_yaw, ego_vel, ego_local, yaw_rate = _ego_window(scene, anchor, window)
     if (
-        not isinstance(track_index, (int, np.integer))
+        not isinstance(track_index, int | np.integer)
         or isinstance(track_index, bool)
         or not 0 <= track_index < len(scene.tracks)
         or track_index == ego_index
