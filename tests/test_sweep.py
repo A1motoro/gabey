@@ -441,6 +441,15 @@ def test_run_matrix_keeps_late_contact_out_of_both_rates():
     assert (outcome["braked_in_window"], outcome["braked_later"]) == (0, 1)
 
 
+def test_equal_windows_are_the_single_window():
+    scenarios = [straight_scenario(lead_v=v) for v in (10.0, 12.0, 20.0)]
+    kwargs = {"sim_kwargs": {"duration": 10.0}}
+    one = run_matrix(["cv", "reactive"], scenarios, [2.0], **kwargs)
+    two = run_matrix(["cv", "reactive"], scenarios, [2.0], decision_duration=10.0, **kwargs)
+    pd.testing.assert_frame_equal(one, two)
+    assert set(one["label"]) == {"dangerous", "benign"}
+
+
 def test_tradeoff_reads_two_class_tables_without_a_label_column():
     frame = pd.DataFrame(
         [
