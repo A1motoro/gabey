@@ -121,3 +121,65 @@ def load_nuscenes_tracks(scene_id: str) -> list[Trajectory]:
         "TODO(A): optional L3 — nuScenes-mini tracks; "
         "every claim must first hold on the synthetic scenario family"
     )
+
+
+def load_womd_tracks(
+    path,
+    *,
+    track_index=None,
+    anchor=20,
+    duration=6.0,
+    history_steps=20,
+    group="cut_in",
+    scenario_id=None,
+) -> list[Trajectory]:
+    """Read a frozen NPZ, or select one raw WOMD window (ego excluded).
+
+    Raw files with multiple records require ``scenario_id``; a single record may
+    be read without it. ``track_index=None`` selects all fully valid vehicles.
+    Use ``pbs.data.womd.real_scenario`` for the complete simulator input.
+    """
+    from pbs.data.womd import load_clip, read_scenarios, real_scenario, sdc_index
+
+    if Path(path).suffix == ".npz":
+        return load_clip(path).agents
+    scene = None
+    for record in read_scenarios(path):
+        if scenario_id is not None:
+            if record.scenario_id == scenario_id:
+                scene = record
+                break
+        elif scene is None:
+            scene = record
+        else:
+            raise ValueError("Multiple records: specify scenario_id or use a frozen NPZ")
+    if scene is None:
+        raise ValueError(f"No matching WOMD scenario: {scenario_id!r}")
+    indices = (
+        [track_index]
+        if track_index is not None
+        else [
+            i
+            for i, track in enumerate(scene.tracks)
+            if i != sdc_index(scene) and track.object_type == 1
+        ]
+    )
+    agents = []
+    for index in indices:
+        try:
+            agents.extend(
+                real_scenario(
+                    scene,
+                    index,
+                    anchor=anchor,
+                    duration=duration,
+                    history_steps=history_steps,
+                    group=group,
+                ).agents
+            )
+        except ValueError:
+            if track_index is not None:
+                raise
+    if not agents:
+        raise ValueError("No continuously valid non-ego vehicle tracks in this window")
+    return agents

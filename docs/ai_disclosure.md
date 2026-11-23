@@ -4,6 +4,7 @@
 
 | 日期 | 成员 | 工具 | 用途 | 涉及文件 | 人工检查方式 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-23 | A | OpenAI Codex | 完成 L3 Waymo 原始读取、官方 SDC 索引、连续有效帧筛选、固定坐标变换、12 个快照、Reactive/CV 与 ADE/FDE、40 候选全审计、危险与误刹说明案例、报告和交接；修正既有 demo 测试的 Windows 临时目录 / 端口预留 / UTF-8 解码 | `pbs/data/womd.py`、loader、vendor/descriptor、scripts、exp07、NPZ、L3 测试与文档 | AI 实测 2321 记录两处 CRC32C、12 快照 SHA256、NPZ 禁止 protobuf/原始数据访问时可读、39 项新增测试、三图视觉核验；完整测试与限制见 `L3_waymo_case_study.md`。首批和按结果挑选的说明案例分开记录，未虚构 CA/Oracle/GRU 结果。人工逐行审阅、报告解释与引用复核仍由 A 完成，未声称已人工验收 |
 | 2026-09-29 | A1m | Claude | 生成项目骨架（目录、`types.py`、walking skeleton、文档模板） | 全仓库初始提交 | 阅读全部文件；smoke test 通过 |
 | 2026-09-29 | A1m | Claude | 按 spec v2 重构骨架（三层 baseline、risk 包、counterfactual、实验矩阵）与文档 | `src/pbs/`、`docs/spec.md`、`docs/interfaces.md`、README | 阅读全部文件；smoke / counterfactual 测试通过 |
 | 2026-10-09 | P（用户身份据既有记忆） | Codex | 实现 L1 CV、TTC、Reactive，编写验证样例和测试；排查 Windows 环境启动问题 | `src/pbs/prediction/`、`src/pbs/risk/`、L1 测试、`experiments/exp00_l1_baseline.py`、`experiments/l1_fixtures.py`、相关文档 | 五轮自动验证记录见 `docs/l1-validation.md`；人工复核待用户查看，未声称已完成人工检查 |

@@ -1,0 +1,11 @@
+clip,group,cohort,system,collision,min_dist,brake_onset_t,false_brake,benign,lead_time_s,ade_3s_m,fde_3s_m
+ef30c381751c832,control,primary,reactive,False,6.1393776969130665,,False,True,,,
+ef30c381751c832,control,primary,cv,False,6.1393776969130665,,False,True,,2.4649608164204904,6.558071767671472
+67319f7409ec6796,control,primary,reactive,False,8.274203374412888,,False,True,,,
+67319f7409ec6796,control,primary,cv,False,8.274203374412888,,False,True,,0.5640801806436576,1.5049492112913658
+78a415dcc9af404e,control,primary,reactive,False,25.483908184209877,,False,True,,,
+78a415dcc9af404e,control,primary,cv,False,25.483908184209877,,False,True,,0.1614608479734802,0.3709198138794771
+b682b4171243133d,control,primary,reactive,False,11.221781331518692,,False,True,,,
+b682b4171243133d,control,primary,cv,False,11.221781331518692,,False,True,,2.0823728561664874,5.972428262953718
+a269102daf3c346f,control,primary,reactive,False,4.565217844135077,,False,True,,,
+a269102daf3c346f,control,primary,cv,False,4.565217844135077,,False,True,,0.0,0.0

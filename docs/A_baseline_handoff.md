@@ -177,7 +177,7 @@ make_scenario("cut_in", gap_d=25, rel_v=2, lc_T=1.5)   # ValueError: 峰值 8.98
 | 5 个 predictor（CV/CA/CTRV/LR/Oracle） | P | `experiments/exp01/exp05` 现在还跑不了 |
 | `assess_risk`、`ReactiveAssessor` | P | 四条边界里除了你的 no-braking 参照，都还画不出来 |
 | `run_matrix`、`tradeoff`、`failure_boundary`、`plot_boundaries` | D | 四边界叠加图 |
-| `load_nuscenes_tracks` | A（你，L3 可选） | 保持 `NotImplementedError`，按 spec §1.3 可随时裁剪 |
+| `load_womd_tracks` / `pbs.data.womd` | A（你，L3） | ✅ 2026-11-23：Waymo 真实快照、Reactive/CV、ADE/FDE 与 case study；原 nuScenes 占位接口保留兼容，见 `L3_A_handoff.md` |
 
 你的部分**不依赖**上面任何一个 —— 这也是为什么你的 baseline 现在就能自证：`is_benign` / `run_sim` 只用到 C 已完成的骨架。
 
