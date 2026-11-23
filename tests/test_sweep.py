@@ -277,3 +277,77 @@ def _onset(sid, system, onset):
     row = _row(sid, system, 2.0, False, False, False)
     row["brake_onset_t"] = onset
     return row
+
+
+def test_run_matrix_l2_hysteresis_and_obb_schema():
+    slow = straight_scenario(lead_v=10.0)
+    slow.params = {"gap_d": 30.0, "rel_v": 5.0}
+    frame = run_matrix(
+        ["reactive", "cv"],
+        [slow],
+        [2.0],
+        sim_kwargs={"duration": 8.0, "horizon": 40, "r_safe": None},
+        policy_kind="hysteresis",
+        hysteresis_gap=1.0,
+    )
+    expected_cols = {
+        "policy",
+        "t_on",
+        "t_off",
+        "geometry",
+        "horizon",
+        "first_collision_t",
+        "min_dist_until_contact",
+    }
+    assert expected_cols <= set(frame.columns)
+    assert set(frame["policy"]) == {"hysteresis"}
+    assert set(frame["geometry"]) == {"obb"}
+    assert set(frame["horizon"]) == {40}
+    assert frame["t_on"].tolist() == [2.0, 2.0]
+    assert frame["t_off"].tolist() == [3.0, 3.0]
+
+
+def test_evaluate_truncates_brake_onset_at_first_collision():
+    from pbs.eval.metrics import evaluate
+    from pbs.types import SimLog
+
+    log = SimLog(
+        t=np.array([0.0, 0.1, 0.2, 0.3]),
+        ego_x=np.array([0.0, 1.0, 2.0, 3.0]),
+        ego_y=np.zeros(4),
+        ego_v=np.full(4, 10.0),
+        ego_a=np.zeros(4),
+        action=["cruise", "cruise", "brake", "brake"],
+        ttc=np.array([np.inf, np.inf, 0.5, 0.5]),
+        min_dist=0.0,
+        collision=True,
+        executed_steps=3,
+        first_collision_t=0.15,
+        min_dist_until_contact=5.0,
+    )
+    metrics = evaluate(log, benign=False)
+    assert metrics["brake_onset_t"] is None
+    assert metrics["first_collision_t"] == pytest.approx(0.15)
+    assert metrics["min_dist_until_contact"] == pytest.approx(5.0)
+
+
+def test_plot_timeline_ignores_unexecuted_terminal_action():
+    from pbs.eval.plots import plot_timeline
+    from pbs.types import SimLog
+
+    log = SimLog(
+        t=np.array([0.0, 0.1, 0.2]),
+        ego_x=np.array([0.0, 1.0, 2.0]),
+        ego_y=np.zeros(3),
+        ego_v=np.array([10.0, 10.0, 9.4]),
+        ego_a=np.array([0.0, -6.0, 0.0]),
+        action=["cruise", "brake", "brake"],
+        ttc=np.array([np.inf, 1.0, 1.0]),
+        min_dist=5.0,
+        collision=False,
+        executed_steps=2,
+    )
+    fig, ax = plt.subplots()
+    plot_timeline(log, ax=ax)
+    assert len(ax.patches) == 1
+    plt.close(fig)

@@ -22,7 +22,7 @@ from matrix_setup import (
     BOUNDARY_SYSTEMS,
     FULL_THRESHOLDS,
     QUICK_THRESHOLDS,
-    SIM_KWARGS,
+    experiment_config,
     write_json,
 )
 from scenario_sets import kind_label, tradeoff_set
@@ -37,9 +37,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true", help="two thresholds instead of six")
     parser.add_argument(
+        "--legacy-l1",
+        action="store_true",
+        help="use legacy L1 circle geometry (r_safe=2.5) and single-threshold policy",
+    )
+    parser.add_argument(
         "--from-csv", type=Path, default=None, help="redraw the figure from a saved matrix"
     )
     args = parser.parse_args()
+    sim_kwargs, policy_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
     csv_path = ROOT / "outputs/logs/exp02.csv"
     figure_path = ROOT / "outputs/figures/exp02_tradeoff.png"
     summary_path = ROOT / "outputs/logs/exp02_summary.json"
@@ -49,7 +55,13 @@ def main():
     else:
         thresholds = QUICK_THRESHOLDS if args.quick else FULL_THRESHOLDS
         scenarios, counts = tradeoff_set()
-        frame = run_matrix(BOUNDARY_SYSTEMS, scenarios, thresholds, sim_kwargs=SIM_KWARGS)
+        frame = run_matrix(
+            BOUNDARY_SYSTEMS,
+            scenarios,
+            thresholds,
+            sim_kwargs=sim_kwargs,
+            **policy_kwargs,
+        )
         families = {scenario_id(s): kind_label(s) for s in scenarios}
         frame.insert(2, "family", frame["scenario_id"].map(families))
         csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,10 +78,11 @@ def main():
     one = one[np.isclose(one["threshold"].astype(float), float(one["threshold"].iloc[0]))]
     one = one[np.isclose(one["latency"].astype(float), float(one["latency"].iloc[0]))]
     benign = one["benign"].map(
-        lambda value: bool(value) if isinstance(value, (bool, np.bool_)) else str(value) == "True"
+        lambda value: bool(value) if isinstance(value, bool | np.bool_) else str(value) == "True"
     )
     summary = {
         "quick": bool(args.quick) if not args.from_csv else None,
+        "config": None if args.from_csv else meta,
         "n_rows": int(len(frame)),
         "n_scenarios": int(len(one)),
         "n_benign_scenarios": int(benign.sum()),

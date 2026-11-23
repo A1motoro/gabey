@@ -31,11 +31,11 @@ JavaScript 播放事件测试 9 passed。已进行浏览器交互与布局检查
 
 1. **标准场景**：初始 gap=20 m、rel_v=5 m/s、cut-in start=0.5 s、duration=3 s。
    点击 Play，旁车应平滑切入；本车只沿原车道减速，不转向。
-2. **关键时刻**：拖动时间轴至 1.10 s，左侧应为 CRUISE、右侧为 BRAKE，CV TTC=1.9 s。
+2. **关键时刻**：拖动时间轴至 1.00 s，左侧应为 CRUISE、右侧为 BRAKE，CV TTC ≈ 1.99 s。
    在 2.00 s 左侧开始 BRAKE。首次触发时速度尚未变化是正常的：动作影响下一个状态。
    可聚焦时间轴用左右方向键微调，或点击 Step +0.1 s。
-3. **结束结果**：拖至 10 s，两侧 FINISHED。Reactive 首刹 2.0 s，CV 首刹 1.1 s，
-   提前 0.90 s；两侧都不碰撞。全程最小中心距分别约 5.40 m 和 5.52 m。
+3. **结束结果**：拖至 10 s，两侧 FINISHED。Reactive 首刹 2.0 s，CV 首刹 1.0 s，
+   提前 1.00 s；两侧都不碰撞。全程最小中心距分别约 5.40 m 和 5.64 m。
    这组数据说明更早触发，不说明 CV 在所有场景都更安全。
 4. **安全切入**：选择 Faster cutter · benign，再点击 Run simulation。
    gap 仍为 20 m，相对速度为 −2 m/s；两侧全程保持 15 m/s、没有刹车，TTC 显示 —。
@@ -49,7 +49,7 @@ JavaScript 播放事件测试 9 passed。已进行浏览器交互与布局检查
    没有横向滚动；关键时刻预测线、动作标记、尾灯和 TTC 应对应同一仿真步。
 
 TTC 的 — 表示预测时域内没有检测到冲突，不是“未来永远安全”。Reactive 使用解析纵向 TTC，
-其有限 TTC 可以大于 3 s；CV 在 3 s 离散预测范围内寻找冲突。中心距离不是车身间距。
+其有限 TTC 可以大于 3 s；CV 在 3 s 预测范围内采用步间连续扫掠（Swept TTC）寻找冲突。中心距离不是车身间距。
 播放时车辆位置和速度连续插值；TTC、中心距离、动作、预测线和曲线使用前一个 0.1 s 仿真采样点。
 终点显示的 FINISHED 不表示又执行了一次策略；最后状态只用于展示。
 
@@ -129,7 +129,7 @@ PYTHONPATH="$PWD/src" python -m pytest -q -k 'not test_load_toy_excludes_ego_and
 
 ## 建议演示顺序
 
-先播放标准场景；暂停到 1.1 s，解释“CV 看见横向趋势，Reactive 此时仍忽略车道外目标”；
+先播放标准场景；暂停到 1.0 s，解释“CV 看见横向趋势，Reactive 此时仍忽略车道外目标”；
 逐帧到 2.0 s；播放到结束比较首刹时间。再运行 Faster cutter，说明系统不会仅因为旁车切入
 就必然刹车。最后说明结果来自合成二维闭环模型，2.5D 只负责展示。
 
@@ -220,8 +220,8 @@ Pareto比较（容差分别0.10 m、0次、0.05 s），互有优劣就标为权�
 测试仅覆盖给定合成场景，不代表真实交通总体。
 
 新增预设 5 m gap · slow merge 为 gap=5、relative speed=1、start=0.5、lc_T=5；
-可观察 Reactive 先冻结、CV 继续行驶。5 m gap · faster merge 将 lc_T 改为3，
-两侧都发生碰撞。完整对比条件见生成表格。
+可观察 Reactive 先冻结（约 2.41 s）、CV 继续行驶（首刹 1.40 s）。5 m gap · faster merge 将 lc_T 改为 3，
+在 L2 Swept TTC 下 Reactive 约 1.70 s 碰撞冻结，CV 首刹 1.00 s 并成功避撞（如需观察双侧同时碰撞，可设 gap=5、relative speed=2、start=1.5）。完整对比条件见生成表格。
 
 新增接口和接触时间验证：
 
@@ -247,12 +247,12 @@ Outside ego lane · not assessed；没有预测冲突时显示 No assessed confl
 
 1. 选择预设或在默认展开的 Adjust parameters 修改参数，然后点击 Run simulation。两版都明确提醒此步骤，
    不会在改动滑块后静默替换正在观看的旧结果。
-2. 选择播放区的 Pause at key events，点击 Play；标准场景自动在 1.10 s 的 CV 首刹暂停。
-   此时右侧显示 Assessed TTC 1.90 s，左侧显示目标尚未纳入评估。
+2. 选择播放区的 Pause at key events，点击 Play；标准场景自动在 1.00 s 的 CV 首刹暂停。
+   此时右侧显示 Assessed TTC ≈ 1.99 s，左侧显示目标尚未纳入评估。
 3. 再点 Play，在 2.00 s 的 Reactive 首刹暂停；继续播放不会再次卡在同一个事件。
 4. Previous/Next event 或各事件按钮可以直接跳转并暂停。缺少相应事件时按钮置灰。
    同刻发生的事件合并到一次暂停，文本同时列出。拖回过去后再次播放可以重新经过事件。
-5. 使用 5 m gap · slow merge 预设，可依次停在 CV 首刹 1.50 s、Reactive 接触约 2.41 s。接触暂停用于讲解，继续播放后只有 CV 动画继续，碰撞侧保持冻结。
+5. 使用 5 m gap · slow merge 预设，可依次停在 CV 首刹 1.40 s、Reactive 接触约 2.41 s。接触暂停用于讲解，继续播放后只有 CV 动画继续，碰撞侧保持冻结。
 6. 选择 Full process 后，可像原版一样连续播放。选择 Faster cutter · benign，所有刹车/碰撞按钮
    均显示 none；正常播放不受影响。
 

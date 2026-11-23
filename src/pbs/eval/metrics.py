@@ -63,14 +63,24 @@ def brake_activity(log: SimLog) -> dict:
 def evaluate(log: SimLog, benign: bool) -> dict:
     """benign: from pbs.eval.counterfactual.is_benign(scenario), computed once per scenario."""
     end = log.executed_steps if log.executed_steps is not None else len(log.t)
+    contact = log.first_collision_t
     onset = next(
-        (ti for ti, a in zip(log.t[:end], log.action[:end], strict=True) if a == "brake"),
+        (
+            ti
+            for ti, a in zip(log.t[:end], log.action[:end], strict=True)
+            if a == "brake" and (contact is None or ti < contact - 1e-9)
+        ),
         None,
     )
     braked = onset is not None
+    min_dist_until_contact = (
+        log.min_dist_until_contact if log.min_dist_until_contact is not None else log.min_dist
+    )
     return {
         "collision": log.collision,
+        "first_collision_t": contact,
         "min_dist": log.min_dist,
+        "min_dist_until_contact": min_dist_until_contact,
         "brake_onset_t": onset,
         "false_brake": benign and braked,
         "benign": benign,
