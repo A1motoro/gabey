@@ -343,7 +343,8 @@ def test_staged_braking_stops_and_recovers_with_bounded_jerk_on_executed_steps()
     assert log.action[-1] == CRUISE and RECOVER in log.action
     accel = log.ego_a[: log.executed_steps]
     assert np.min(accel) == -6 and np.max(accel) == 1.5
-    assert max(abs(np.diff(accel, prepend=0))) / scenario.dt <= 10 + 1e-9
+    limits = np.where(np.array(log.action[: log.executed_steps]) == HARD_BRAKE, 20.0, 5.0)
+    assert np.all(abs(np.diff(accel, prepend=0)) / scenario.dt <= limits + 1e-9)
     reset_run = run_sim(scene(speed=3), NullAssessor(), policy, duration=1)
     assert np.all(reset_run.ego_v == 3) and np.all(reset_run.ego_a == 0)
 

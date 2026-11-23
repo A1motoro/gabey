@@ -72,7 +72,7 @@ def _speed_limit_accel(speed_margin: float, dt: float, jerk_step: float) -> floa
 
 
 class StagedBrakingPolicy:
-    """Hysteretic TTC control with jerk-limited braking and cruise-speed recovery."""
+    """TTC hysteresis with independent comfort and emergency acceleration slew rates."""
 
     def __init__(
         self,
@@ -84,8 +84,14 @@ class StagedBrakingPolicy:
         a_soft=2.5,
         a_hard=6.0,
         a_recover=1.5,
-        max_jerk=10.0,
+        jerk_soft: float = 5.0,
+        jerk_hard: float = 20.0,
+        v_target: float | None = None,
+        max_jerk: float | None = None,
     ):
+        # Older experiments explicitly selected one rate for both stages.
+        if max_jerk is not None:
+            jerk_soft = jerk_hard = max_jerk
         parameters = (
             t_on_soft,
             t_off_soft,
@@ -94,19 +100,26 @@ class StagedBrakingPolicy:
             a_soft,
             a_hard,
             a_recover,
-            max_jerk,
+            jerk_soft,
+            jerk_hard,
         )
-        if not all(math.isfinite(x) and x > 0 for x in parameters):
-            raise ValueError("Staged braking parameters must be finite and positive.")
-        if not t_on_hard < t_off_hard < t_on_soft < t_off_soft or a_soft > a_hard:
-            raise ValueError("Invalid staged TTC thresholds or braking magnitudes.")
+        if not all(math.isfinite(x) for x in parameters):
+            raise ValueError("Staged braking parameters must be finite.")
+        if not 0 < t_on_hard < t_off_hard <= t_on_soft < t_off_soft:
+            raise ValueError("Invalid staged TTC thresholds.")
+        if not 0 < a_soft <= a_hard or a_recover < 0 or not 0 < jerk_soft <= jerk_hard:
+            raise ValueError("Invalid staged acceleration or jerk bounds.")
         self.t_on_soft, self.t_off_soft = t_on_soft, t_off_soft
         self.t_on_hard, self.t_off_hard = t_on_hard, t_off_hard
         self.a_soft, self.a_hard = a_soft, a_hard
-        self.a_recover, self.max_jerk = a_recover, max_jerk
+        self.a_recover, self.a_brake = a_recover, a_hard
+        self.jerk_soft, self.jerk_hard = jerk_soft, jerk_hard
+        self._default_v_target = v_target
         self.reset()
 
     def reset(self, *, v_target: float | None = None) -> None:
+        if v_target is None:
+            v_target = self._default_v_target
         if v_target is not None and (not math.isfinite(v_target) or v_target < 0):
             raise ValueError("Target speed must be finite and nonnegative.")
         self.v_target = v_target
@@ -120,14 +133,12 @@ class StagedBrakingPolicy:
             raise ValueError("Require nonnegative finite speed and positive finite dt.")
         if self.v_target is None:
             self.v_target = v
-        if ttc < self.t_on_hard:
+        if ttc < self.t_on_hard or (self.state == HARD_BRAKE and ttc <= self.t_off_hard):
             self.state = HARD_BRAKE
-        elif self.state == HARD_BRAKE and ttc <= self.t_off_hard:
-            pass  # Hold emergency braking through its release threshold.
-        elif ttc < self.t_on_soft:
+        elif ttc < self.t_on_soft or (is_braking_action(self.state) and ttc <= self.t_off_soft):
             self.state = SOFT_BRAKE
-        elif ttc > self.t_off_soft or not is_braking_action(self.state):
-            self.state = RECOVER if v < self.v_target else CRUISE
+        else:
+            self.state = RECOVER if self.a_recover > 0 and v < self.v_target - 1e-6 else CRUISE
 
         target = {
             HARD_BRAKE: -self.a_hard,
@@ -135,13 +146,15 @@ class StagedBrakingPolicy:
             RECOVER: self.a_recover,
             CRUISE: 0.0,
         }[self.state]
-        step = self.max_jerk * dt
+        step = (self.jerk_hard if self.state == HARD_BRAKE else self.jerk_soft) * dt
         a = max(self.prev_a - step, min(target, self.prev_a + step))
         # Begin releasing before either speed boundary. Clamping only after
         # reaching rest or cruise speed would create a one-frame jerk spike.
+        # Even an emergency command may release into the comfort stage next tick.
+        release_step = self.jerk_soft * dt
         if a < 0:
-            a = max(a, -_speed_limit_accel(v, dt, step))
+            a = max(a, -_speed_limit_accel(v, dt, release_step))
         elif a > 0:
-            a = min(a, _speed_limit_accel(max(0.0, self.v_target - v), dt, step))
+            a = min(a, _speed_limit_accel(max(0.0, self.v_target - v), dt, release_step))
         self.prev_a = a
         return self.state, a

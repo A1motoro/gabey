@@ -68,3 +68,44 @@ def test_staged_hysteresis_and_action_labels():
 def test_staged_rejects_invalid_configuration(settings):
     with pytest.raises(ValueError):
         StagedBrakingPolicy(**settings)
+
+
+def test_staged_pressure_ramps_and_comfort_release():
+    policy = StagedBrakingPolicy(v_target=20)
+
+    def ramp(ttc, steps):
+        return [policy.decide_accel(ttc, v=15, dt=0.1)[1] for _ in range(steps)]
+
+    assert ramp(2.5, 5) == [-0.5, -1, -1.5, -2, -2.5]
+    assert ramp(1.0, 2) == [-4.5, -6]
+    assert ramp(3.5, 1) == [-5.5] and policy.state == SOFT_BRAKE
+    assert ramp(3.2, 6) == [-5, -4.5, -4, -3.5, -3, -2.5]
+    assert ramp(np.inf, 8) == [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5]
+    assert policy.state == RECOVER
+    policy.reset()
+    assert policy.v_target == 20 and ramp(1.0, 3) == [-2, -4, -6]
+
+
+@pytest.mark.parametrize("ttc", [2.01, 3.0, 3.2, 3.5])
+def test_hard_braking_downgrades_across_entire_release_band(ttc):
+    policy = StagedBrakingPolicy()
+    policy.decide_accel(1.0, v=10, dt=0.1)
+    assert policy.decide_accel(ttc, v=10, dt=0.1)[0] == SOFT_BRAKE
+
+
+def test_custom_jerk_rates_and_legacy_uniform_rate():
+    policy = StagedBrakingPolicy(jerk_soft=3, jerk_hard=12, a_recover=0, v_target=20)
+    assert policy.decide_accel(np.inf, v=15, dt=0.2) == (CRUISE, 0.0)
+    assert policy.decide_accel(2.5, v=15, dt=0.2)[1] == pytest.approx(-0.6)
+    assert policy.decide_accel(1.0, v=15, dt=0.2)[1] == pytest.approx(-3.0)
+    old = StagedBrakingPolicy(max_jerk=10)
+    assert old.decide_accel(2.5, v=15, dt=0.1)[1] == -1
+    assert old.decide_accel(1.0, v=15, dt=0.1)[1] == -2
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"jerk_soft": 0}, {"jerk_hard": np.inf}, {"jerk_soft": 21}, {"v_target": -1}]
+)
+def test_invalid_dual_rate_configuration(kwargs):
+    with pytest.raises(ValueError):
+        StagedBrakingPolicy(**kwargs)
