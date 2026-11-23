@@ -51,3 +51,31 @@ def test_pedestrian_uses_rounded_corners_around_vehicle():
     assert swept_contact_fraction(
         [0, 0], [10, 0], [6, 2.0], [6, 2.0], pedestrian=True
     ) == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize("width,expected", [(2.0, False), (2.5, True)])
+def test_width_matches_static_swept_and_predicted_contact(width, expected):
+    dims = dict(vehicle_width=width)
+    assert in_collision([0, 0], [0, 2.25], **dims) == expected
+    entry = swept_contact_fraction([-10, 0], [10, 0], [0, 2.25], [0, 2.25], **dims)
+    assert entry == (0.25 if expected else None)
+    risk = assess_risk(
+        [[10, 0]],
+        [[0, 2.25]],
+        1.0,
+        ego_origin=[-10, 0],
+        agent_origin=[0, 2.25],
+        swept=True,
+        **dims,
+    )
+    assert risk.ttc == (0.25 if expected else np.inf)
+
+
+def test_unequal_rotated_footprints_use_both_bodies_axes():
+    dims = dict(vehicle_length=8, vehicle_width=2, agent_length=4, agent_width=1)
+    # At a right angle the combined half-extents are 4.5 along x and 3 along y.
+    for offset, expected in [((4.49, 2.99), True), ((4.5, 0), False), ((0, 3), False)]:
+        assert in_collision([0, 0], offset, agent_heading=np.pi / 2, **dims) == expected
+    assert swept_contact_fraction(
+        [0, 0], [10, 0], [8, 2.99], [8, 2.99], agent_heading=np.pi / 2, **dims
+    ) == pytest.approx(0.35)

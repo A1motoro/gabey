@@ -5,10 +5,13 @@ Per step (dt = 0.1 s): observe (with latency) → ego rollout → assess each ag
 Ego is simulated (reacts to braking); agents are log-replayed (do not react).
 """
 
+from inspect import signature
+
 import numpy as np
 
 from pbs.risk.assessors import RiskAssessor
 from pbs.sim.collision import (
+    PEDESTRIAN_RADIUS,
     VEHICLE_LENGTH,
     VEHICLE_WIDTH,
     in_collision,
@@ -16,10 +19,10 @@ from pbs.sim.collision import (
     swept_min_distance,
 )
 from pbs.sim.observation import ObservationModel
-from pbs.sim.policy import BRAKE, CRUISE
+from pbs.sim.policy import BRAKE, CRUISE, HARD_BRAKE, RECOVER, SOFT_BRAKE
 from pbs.sim.timing import ComputationDelayModel
 from pbs.types import RiskContext, Scenario, SimLog
-from pbs.utils import history_until, path_heading, path_point, state_at
+from pbs.utils import _cum_arclength, history_until, path_heading, path_point, state_at
 
 DEFAULT_A_BRAKE = 6.0  # m/s²
 
@@ -30,10 +33,15 @@ class MissingObservationError(ValueError):
 
 def advance_motion(v: float, a_brake: float, dt: float, action: str) -> tuple[float, float]:
     """Return travelled arc length and next speed, including stopping within dt."""
-    if action == CRUISE:
-        return v * dt, v
-    h = min(dt, v / a_brake)
-    return v * h - 0.5 * a_brake * h * h, max(0.0, v - a_brake * h)
+    return advance_kinematics(v, 0.0 if action == CRUISE else -a_brake, dt)
+
+
+def advance_kinematics(
+    v: float, a: float, dt: float | np.ndarray
+) -> tuple[float | np.ndarray, float | np.ndarray]:
+    """Displacement and speed at one or more offsets, holding position after stopping."""
+    h = np.minimum(dt, v / -a) if a < 0 else dt
+    return v * h + 0.5 * a * h * h, np.maximum(0.0, v + a * h)
 
 
 def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brake):
@@ -48,7 +56,7 @@ def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brak
         raise ValueError("r_safe must be finite and positive in legacy circle mode.")
     if duration < 0 or latency < 0:
         raise ValueError("duration and latency must be nonnegative.")
-    if not isinstance(horizon, (int, np.integer)) or isinstance(horizon, bool) or horizon < 1:
+    if not isinstance(horizon, int | np.integer) or isinstance(horizon, bool) or horizon < 1:
         raise ValueError("horizon must be a positive integer number of steps.")
     steps = int(round(duration / dt))
     if not np.isclose(steps * dt, duration, rtol=0, atol=1e-9):
@@ -63,9 +71,9 @@ def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brak
         raise ValueError("ego_path must be finite and have no zero-length segments.")
     if not np.allclose(start[:2], path[0], rtol=0, atol=1e-8):
         raise ValueError("ego_start position must match ego_path[0].")
-    heading_error = np.arctan2(
-        np.sin(start[2] - path_heading(path, 0)), np.cos(start[2] - path_heading(path, 0))
-    )
+    cum = _cum_arclength(path)
+    angle = start[2] - path_heading(path, 0, cum=cum)
+    heading_error = np.arctan2(np.sin(angle), np.cos(angle))
     if abs(heading_error) > 1e-6:
         raise ValueError("ego_start heading must match the first path segment.")
     ids = set()
@@ -86,15 +94,18 @@ def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brak
             )
         if agent.t[-1] < duration - 1e-9:
             raise ValueError(f"Agent {agent.agent_id!r}: truth must cover duration={duration}.")
-    return steps, path
+    return steps, path, cum
 
 
-def ego_rollout(path: np.ndarray, s: float, v: float, horizon: int, dt: float) -> np.ndarray:
+def ego_rollout(
+    path: np.ndarray, s: float, v: float, horizon: int, dt: float, *, cum=None
+) -> np.ndarray:
     """Ego future under 'keep current speed' along path. (horizon, 2)."""
-    length = float(np.linalg.norm(np.diff(path, axis=0), axis=1).sum())
-    if s + v * horizon * dt > length + 1e-8:
+    if cum is None:
+        cum = _cum_arclength(path)
+    if s + v * horizon * dt > cum[-1] + 1e-8:
         raise ValueError("ego_path is too short for the requested ego prediction horizon.")
-    return np.array([path_point(path, s + v * dt * (k + 1)) for k in range(horizon)])
+    return path_point(path, s + v * dt * np.arange(1, horizon + 1), cum=cum)
 
 
 def run_sim(
@@ -109,6 +120,8 @@ def run_sim(
     *,
     observation_model: ObservationModel | None = None,
     computation_delay_model: ComputationDelayModel | None = None,
+    vehicle_length: float = VEHICLE_LENGTH,
+    vehicle_width: float = VEHICLE_WIDTH,
 ) -> SimLog:
     """Run one independent experiment using A's Scenario and P's RiskAssessor.
 
@@ -121,21 +134,28 @@ def run_sim(
     """
     dt = scenario.dt
     a_brake = getattr(policy, "a_brake", DEFAULT_A_BRAKE)
-    steps, path = _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brake)
+    if not all(np.isfinite(d) and d > 0 for d in (vehicle_length, vehicle_width)):
+        raise ValueError("Vehicle dimensions must be finite and positive.")
+    dimensions = dict(vehicle_length=vehicle_length, vehicle_width=vehicle_width)
+    steps, path, path_distances = _validate(
+        scenario, duration, horizon, r_safe, latency, collision_dt, a_brake
+    )
     n = steps + 1
     t = np.arange(n) * dt
+    decide_accel = getattr(policy, "decide_accel", None)
     reset = getattr(policy, "reset", None)
     if callable(reset):
-        reset()
+        if callable(decide_accel) and "v_target" in signature(reset).parameters:
+            reset(v_target=float(scenario.ego_start[3]))
+        else:
+            reset()
     assessor.bind(scenario)
-    path_distances = np.concatenate(
-        [[0.0], np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
-    )
 
     path_delta = np.diff(path, axis=0)
     path_angles = np.arctan2(path_delta[:, 1], path_delta[:, 0])
     agent_angles = {a.agent_id: np.unwrap(a.heading) for a in scenario.agents}
-    broad_limit = r_safe if r_safe is not None else np.hypot(VEHICLE_LENGTH, VEHICLE_WIDTH)
+    diagonal = np.hypot(vehicle_length, vehicle_width)
+    broad_limit = r_safe if r_safe is not None else max(diagonal, diagonal / 2 + PEDESTRIAN_RADIUS)
 
     def headings_at(arcs):
         indices = np.searchsorted(path_distances, arcs, side="right") - 1
@@ -164,20 +184,21 @@ def run_sim(
                 raise NotImplementedError(
                     "Nonzero computation delay needs an execution queue; only zero is supported."
                 )
-        ego_xy = path_point(path, s)
+        ego_xy = path_point(path, s, cum=path_distances)
         ego_x[k], ego_y[k], ego_v[k] = ego_xy[0], ego_xy[1], v
 
         ctx = RiskContext(
             t_now=t[k],
             ego_xy=ego_xy,
-            ego_heading=path_heading(path, s),
+            ego_heading=path_heading(path, s, cum=path_distances),
             ego_v=v,
-            ego_future=ego_rollout(scenario.ego_path, s, v, horizon, dt),
+            ego_future=ego_rollout(path, s, v, horizon, dt, cum=path_distances),
             ego_path=scenario.ego_path,
             lane_width=scenario.lane_width,
             horizon=horizon,
             dt=dt,
             r_safe=r_safe,
+            **dimensions,
             ego_future_heading=headings_at(s + v * dt * np.arange(1, horizon + 1)),
         )
         for agent in scenario.agents:
@@ -190,6 +211,7 @@ def run_sim(
                 ego_heading=ctx.ego_heading,
                 agent_heading=np.interp(t[k], agent.t, agent_angles[agent.agent_id]),
                 pedestrian=agent.agent_type == "pedestrian",
+                **dimensions,
             )
             collision |= overlap
             if overlap and first_collision_t is None:
@@ -214,38 +236,40 @@ def run_sim(
             # Keep equal-length columns without asking policy to execute an extra action.
             action.append(action[-1] if action else CRUISE)
             break
-        act = policy.decide(ttc[k])
-        if act not in (BRAKE, CRUISE):
-            raise ValueError(f"Unknown policy action: {act!r}.")
+        if callable(decide_accel):
+            act, a = decide_accel(ttc[k], v=v, dt=dt)
+            if act not in (CRUISE, RECOVER, SOFT_BRAKE, HARD_BRAKE, BRAKE) or not np.isfinite(a):
+                raise ValueError(f"Invalid acceleration policy output: {(act, a)!r}.")
+        else:
+            act = policy.decide(ttc[k])
+            if act not in (BRAKE, CRUISE):
+                raise ValueError(f"Unknown policy action: {act!r}.")
+            a = -a_brake if act == BRAKE and v > 0 else 0.0
         action.append(act)
-        a = -a_brake if act == BRAKE and v > 0 else 0.0
         ego_a[k] = a
-        ds, next_v = advance_motion(v, a_brake, dt, act)
+        ds, next_v = advance_kinematics(v, a, dt)
         if s + ds > path_distances[-1] + 1e-8:
             raise ValueError("ego_path ends before the next simulated position.")
 
         # Sweep true trajectories, not the predictor's output.
         offsets = list(np.linspace(0, dt, int(np.ceil(dt / collision_dt)) + 1))
-        if a < 0 and 0 < v / a_brake < dt:
-            offsets.append(v / a_brake)
-        for corner in path_distances[1:-1]:
-            distance = corner - s
-            if 0 < distance < ds:
-                if a < 0:
-                    offsets.append(
-                        2 * distance / (v + np.sqrt(max(0, v * v - 2 * a_brake * distance)))
-                    )
-                else:
-                    offsets.append(distance / v)
+        if a < 0 and 0 < v / -a < dt:
+            offsets.append(v / -a)
+        first = np.searchsorted(path_distances, s, side="right")
+        last = np.searchsorted(path_distances, s + ds, side="left")
+        for distance in path_distances[first:last] - s:
+            # Stable positive root of v*h + a*h²/2 = distance, including a=0.
+            offsets.append(2 * distance / (v + np.sqrt(max(0, v * v + 2 * a * distance))))
         before_contact = first_collision_t is None
         intervals = []
         for agent in scenario.agents:
             knots = agent.t[(agent.t > t[k]) & (agent.t < t[k + 1])] - t[k]
             times = np.unique(np.concatenate([offsets, knots]))
-            positions = [path_point(path, s + advance_motion(v, a_brake, h, act)[0]) for h in times]
+            arcs = s + advance_kinematics(v, a, times)[0]
+            positions = path_point(path, arcs, cum=path_distances)
             truth = [state_at(agent, t[k] + h) for h in times]
             mid = (times[:-1] + times[1:]) / 2
-            ego_headings = headings_at([s + advance_motion(v, a_brake, h, act)[0] for h in mid])
+            ego_headings = headings_at(s + advance_kinematics(v, a, mid)[0])
             other_headings = np.interp(t[k] + mid, agent.t, agent_angles[agent.agent_id])
             for j in range(len(times) - 1):
                 distance = swept_min_distance(
@@ -274,6 +298,7 @@ def run_sim(
                         ego_heading=ego_headings[j],
                         agent_heading=other_headings[j],
                         pedestrian=agent.agent_type == "pedestrian",
+                        **dimensions,
                     )
                     if fraction is None:
                         continue

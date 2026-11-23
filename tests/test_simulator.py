@@ -5,10 +5,20 @@ import pytest
 
 from pbs.eval.metrics import evaluate
 from pbs.risk.assessors import NullAssessor, RiskAssessor
-from pbs.sim.policy import BRAKE, CRUISE, HysteresisPolicy, NeverBrakePolicy, TTCThresholdPolicy
-from pbs.sim.simulator import MissingObservationError, run_sim
+from pbs.sim.policy import (
+    BRAKE,
+    CRUISE,
+    HARD_BRAKE,
+    RECOVER,
+    HysteresisPolicy,
+    NeverBrakePolicy,
+    StagedBrakingPolicy,
+    TTCThresholdPolicy,
+)
+from pbs.sim.simulator import MissingObservationError, ego_rollout, run_sim
+from pbs.systems import make_system
 from pbs.types import RiskEstimate, Scenario, SimLog, Trajectory
-from pbs.utils import history_until
+from pbs.utils import history_until, path_heading, path_point
 
 
 class FixedRisk(RiskAssessor):
@@ -275,3 +285,117 @@ def test_reject_short_path_and_truth():
 def test_reject_nan_risk():
     with pytest.raises(ValueError, match="Invalid TTC"):
         run_sim(scene(), FixedRisk(np.nan), HysteresisPolicy(), duration=0.2)
+
+
+def test_vehicle_size_flows_through_context_truth_and_both_assessors():
+    scenario = scene(speed=10)
+    agent = scenario.agents[0]
+    agent.x[:] = 4.95
+    agent.y[:] = 2.25
+    for width, hit in [(2.5, True), (2.0, False)]:
+        spy = FixedRisk()
+        log = run_sim(scenario, spy, NeverBrakePolicy(), duration=0, vehicle_width=width)
+        assert log.collision == hit
+        assert spy.contexts[0].vehicle_width == width
+        log = run_sim(
+            scenario, make_system("cv"), NeverBrakePolicy(), duration=0, vehicle_width=width
+        )
+        assert np.isfinite(log.ttc[0]) == hit
+    agent.x[:] = 20
+    agent.y[:] = 0
+    agent.heading[:] = np.pi / 2
+    log = run_sim(
+        scenario,
+        make_system("reactive"),
+        NeverBrakePolicy(),
+        duration=0,
+        vehicle_width=2,
+        vehicle_length=8,
+    )
+    assert log.ttc[0] == pytest.approx((20 - 4 - 1) / 10)
+
+
+@pytest.mark.parametrize(
+    "arg,value",
+    [
+        ("vehicle_width", 0),
+        ("vehicle_length", -1),
+        ("vehicle_width", np.nan),
+        ("vehicle_length", np.inf),
+    ],
+)
+def test_invalid_vehicle_dimensions(arg, value):
+    with pytest.raises(ValueError, match="dimensions"):
+        run_sim(scene(), NullAssessor(), NeverBrakePolicy(), duration=0, **{arg: value})
+
+
+def test_staged_braking_stops_and_recovers_with_bounded_jerk_on_executed_steps():
+    class TemporaryRisk(RiskAssessor):
+        def assess(self, ctx, history):
+            return RiskEstimate(ttc=1.0 if ctx.t_now < 3 else np.inf)
+
+    scenario = scene(speed=7.23)
+    policy = StagedBrakingPolicy()
+    log = run_sim(scenario, TemporaryRisk(), policy, duration=10)
+    assert log.ego_v.min() == 0
+    assert np.all(np.diff(log.ego_x) >= 0)
+    assert log.ego_v.max() == log.ego_v[-1] == scenario.ego_start[3]
+    assert log.action[-1] == CRUISE and RECOVER in log.action
+    accel = log.ego_a[: log.executed_steps]
+    assert np.min(accel) == -6 and np.max(accel) == 1.5
+    assert max(abs(np.diff(accel, prepend=0))) / scenario.dt <= 10 + 1e-9
+    reset_run = run_sim(scene(speed=3), NullAssessor(), policy, duration=1)
+    assert np.all(reset_run.ego_v == 3) and np.all(reset_run.ego_a == 0)
+
+
+def test_recovery_from_braking_hits_corner_between_frames():
+    class OneBrake(RiskAssessor):
+        def assess(self, ctx, history):
+            return RiskEstimate(ttc=1 if ctx.t_now == 0 else np.inf)
+
+    scenario = scene(speed=2, dt=1, end=2)
+    # First second: x=1.5, v=1. Next half-second: s=1.5+0.5+0.125 at corner.
+    scenario.ego_path = np.array([[0.0, 0.0], [2.125, 0.0], [2.125, 20.0]])
+    scenario.agents[0].x[:] = 2.125
+    scenario.agents[0].y[:] = 0
+    policy = StagedBrakingPolicy(a_hard=1, a_soft=1, a_recover=1)
+    log = run_sim(scenario, OneBrake(), policy, duration=2, horizon=1, collision_dt=1, r_safe=0.001)
+    assert log.action[:2] == [HARD_BRAKE, RECOVER]
+    assert log.first_collision_t == pytest.approx(1.5, abs=0.001)
+    assert log.min_dist == pytest.approx(0)
+    assert log.ego_y[-1] == pytest.approx(0.875)
+
+
+def test_arc_cache_matches_scalar_queries_and_vector_rollout():
+    path = np.array([[0.0, 0.0], [3.0, 0.0], [3.0, 4.0], [7.0, 7.0]])
+    cum = np.array([0.0, 3.0, 7.0, 12.0])
+    arcs = [-1.0, 0.0, 1.0, 3.0, 5.0, 7.0, 8.0, 12.0, 15.0]
+    expected = [path_point(path, arc) for arc in arcs]
+    np.testing.assert_allclose(path_point(path, arcs, cum=cum), expected)
+    for arc in arcs:
+        assert path_heading(path, arc, cum=cum) == path_heading(path, arc)
+    np.testing.assert_allclose(
+        ego_rollout(path, 1, 2, 5, 1, cum=cum), [path_point(path, s) for s in (3, 5, 7, 9, 11)]
+    )
+
+
+@pytest.mark.parametrize("width,collision", [(2.0, False), (2.5, True), (8.0, True)])
+def test_width_controls_truth_sweep_when_endpoints_are_clear(width, collision):
+    scenario = scene(speed=0, dt=1, history_start=0, end=1)
+    agent = scenario.agents[0]
+    agent.x[:] = [-20, 20]
+    # The widest case also exceeds the default broad-phase cutoff.
+    agent.y[:] = 7 if width == 8 else 2.25
+    log = run_sim(
+        scenario,
+        NullAssessor(),
+        NeverBrakePolicy(),
+        duration=1,
+        vehicle_width=width,
+        collision_dt=1,
+    )
+    assert log.collision == collision
+    if collision:
+        assert log.first_collision_t == pytest.approx(0.375)
+    else:
+        assert log.first_collision_t is None

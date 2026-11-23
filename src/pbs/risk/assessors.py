@@ -16,7 +16,7 @@ import numpy as np
 
 from pbs.prediction._motion import last_velocity, prediction_inputs
 from pbs.prediction.base import Predictor
-from pbs.sim.collision import HALF_LENGTH, HALF_WIDTH, PEDESTRIAN_RADIUS
+from pbs.sim.collision import PEDESTRIAN_RADIUS
 from pbs.types import RiskContext, RiskEstimate, Scenario, Trajectory
 
 
@@ -64,10 +64,10 @@ class ReactiveAssessor(RiskAssessor):
             agent_extent = (
                 PEDESTRIAN_RADIUS
                 if history.agent_type == "pedestrian"
-                else HALF_LENGTH * abs(np.cos(relative_heading))
-                + HALF_WIDTH * abs(np.sin(relative_heading))
+                else (ctx.vehicle_length / 2) * abs(np.cos(relative_heading))
+                + (ctx.vehicle_width / 2) * abs(np.sin(relative_heading))
             )
-            extent = HALF_LENGTH + agent_extent
+            extent = (ctx.vehicle_length / 2) + agent_extent
         remaining = gap - extent
         if remaining < 0:
             return RiskEstimate(ttc=0.0)
@@ -167,4 +167,6 @@ class PredictiveAssessor(RiskAssessor):
             ego_origin_heading=ctx.ego_heading,
             agent_origin_heading=agent_now_heading,
             swept=True,
+            vehicle_length=ctx.vehicle_length,
+            vehicle_width=ctx.vehicle_width,
         )

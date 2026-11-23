@@ -48,7 +48,7 @@ class SimLog:
     ego_y: np.ndarray
     ego_v: np.ndarray
     ego_a: np.ndarray
-    action: list[str]  # 每步 'cruise' / 'brake'
+    action: list[str]  # Staged policies also report soft_brake, hard_brake and recover.
     ttc: np.ndarray  # 每步估计的 TTC（所有 agent 取 min），无冲突为 inf
     min_dist: float
     collision: bool
@@ -77,6 +77,8 @@ class RiskContext:
     dt: float
     r_safe: float | None = None  # Explicit value selects the historical circle model.
     ego_future_heading: np.ndarray | None = None
+    vehicle_length: float = 5.0
+    vehicle_width: float = 2.5
 
 
 @dataclass
