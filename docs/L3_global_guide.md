@@ -13,7 +13,7 @@
 | 维度 | L2 已冻结基线（默认不变） | L3 升级规格（本次四人共同目标） | 负责模块 |
 | --- | --- | --- | --- |
 | **车辆碰撞几何** | `5.0 m × 2.5 m` 定向矩形 OBB（`r_safe=None`） | **`5.0 m × 2.0 m` 乘用车定向矩形 OBB**（通过可选参数 `vehicle_width=2.0` 开启，L2 默认仍为 `2.5 m`） | C (`pbs.sim`) + P (`pbs.risk`) |
-| **纵向制动策略** | 二值滞回 `HysteresisPolicy(t_on=2.0, t_off=3.0, a=6.0)`，松刹不恢复车速 | **三级滞回 + Jerk 限幅 `StagedBrakingPolicy`**：恢复加速 `+1.5` / 舒适预制动 `-2.5` / 紧急制动 `-6.0 m/s²`，加加速度限幅 `max_jerk = 10.0 m/s³` | C (`pbs.sim.policy`) |
+| **纵向制动策略** | 二值滞回 `HysteresisPolicy(t_on=2.0, t_off=3.0, a=6.0)`，松刹不恢复车速 | **三级滞回 + 双档 Jerk 限幅 `StagedBrakingPolicy`**：恢复加速 `+1.5` / 舒适预制动 `-2.5` / 紧急制动 `-6.0 m/s²`，双档加加速度限幅 `jerk_soft = 5.0 m/s³`、`jerk_hard = 20.0 m/s³` | C (`pbs.sim.policy`) |
 | **预测器谱系** | `Reactive → CV / CA / CTRV / LR → Oracle` | 新增 **Waymo 轻量神经网络（方案 B：单模态均值 + 异方差位置标准差 $\sigma$）**，支持 `NN-Traj`（纯轨迹）与 `NN-Lane`（含相对参考车道）消融；GPU PyTorch 训练 → 纯 NumPy `.npz` 推理 | P (`pbs.prediction`) |
 | **风险评估 (TTC)** | 4.0 s 时域（`horizon=40`）+ 步间连续扫掠（Swept TTC） | 新增 **不确定度感知的 Swept TTC（Uncertainty-Aware TTC）**：当 `uncertainty_scale = κ > 0` 时，按 $+\kappa\sigma_k$ 动态膨胀目标车碰撞包络 | P (`pbs.risk`) |
 | **观测噪声模型** | 理想零噪声真值观测 | **因果缓存高斯观测噪声 `GaussianObservationModel`**：对 `(x, y, v, heading)` 注入噪声并按 `(agent_id, timestamp)` 缓存，不污染真值碰撞 | C (`pbs.sim.observation`) |
@@ -128,16 +128,18 @@ C (M3 pbs.sim / pbs.demo)           D (M4 pbs.eval / pbs.systems / experiments)
 - 实现契约 1 中的 `extract_traj_features(history, dt=0.1, steps=10) -> (60,)` 与 `extract_lane_features(history, ego_path, lane_width=3.5) -> (20,)`；
 - 保证平移与旋转不变性（对 `Scenario` 整体旋转任意角度，提取出的特征向量逐位相等）。
 
-### P-T2：方案 B 异方差不确定度神经网络（`src/pbs/prediction/neural.py`）
-1. **模型结构（支持纯 NumPy `.npz` 推理导出）**：
+### P-T2：方案 B 异方差不确定度神经网络与 `{128, 256, 512, 1024}` 容量验证（`src/pbs/prediction/neural.py`）
+> 完整架构、两阶段训练法与四档容量选优协议见专项文档：**[docs/neural_predictor_option_b.md](neural_predictor_option_b.md)**。
+1. **模型结构（支持纯 NumPy `.npz` 自适应宽度推理导出）**：
    - 输入：`60` 维（`use_lane=False`）或 `80` 维（`use_lane=True`）；
-   - 主干：3 层残差 MLP（隐藏维 `128`，LayerNorm + SiLU，参数量约 5 万）：
+   - 主干：3 层残差 MLP（2 个 ResBlock，LayerNorm + SiLU，隐藏维 $H_{\text{dim}} \in \{128, 256, 512, 1024\}$）：
      - 以局部恒速外推 $\hat{p}_k^{\text{cv}} = v_{\text{local}}(t_0) \cdot (k \cdot dt)$ 为物理残差锚点，网络输出位置修正量 $\Delta\mu_k \in \mathbb{R}^2$ 与不确定度原值 $z_{\sigma, k} \in \mathbb{R}^2$；
      - 局部均值 $\hat{p}_k = \hat{p}_k^{\text{cv}} + \Delta\mu_k$，局部标准差 $\sigma_k = \text{clip}(\text{softplus}(z_{\sigma, k}) + 0.05, 0.05, 5.0)$。
-2. **GPU 训练脚本（`experiments/train_waymo_neural.py`）**：
-   - 使用 Gaussian NLL Loss 训练 `NN-Traj` 与 `NN-Lane` 两个权重文件，导出至 `src/pbs/prediction/weights/waymo_nn_traj.npz` 和 `waymo_nn_lane.npz`（单文件 `< 1 MB`），并在 `pyproject.toml` 的 `package-data` 中注册。
+2. **GPU 训练与 `{128, 256, 512, 1024}` 四档容量验证脚本（`experiments/train_waymo_neural.py`）**：
+   - 固定随机种子，用「Stage 1 Smooth L1 均值预热 (25 Epochs) + Stage 2 Gaussian NLL 联合校准 (35 Epochs)」依次训练 $H_{\text{dim}} \in \{128, 256, 512, 1024\}$ 四档模型；
+   - 按 5 个维度（Waymo 验证集 ADE/FDE、Gaussian NLL 与 $1\sigma$ 覆盖率校准偏差、A 的合成切片跨域 ADE/FDE、观测加噪鲁棒性、纯 NumPy CPU 单步推理延迟）自动生成对比表 `verification_summary.csv` 与验证图，并将综合最优档位导出至 `src/pbs/prediction/weights/waymo_nn_lane.npz` 和 `waymo_nn_traj.npz` 入库。
 3. **`NeuralPredictor` 类接口**：
-   - `predict(history, horizon, dt) -> (H, 2)`：纯 NumPy 矩阵前向推理（单次 `< 0.05 ms`），将局部均值旋回世界坐标返回，同时更新 `self.latest` 与 `self.latest_std`（`(H, 2)`）。
+   - `predict(history, horizon, dt) -> (H, 2)`：纯 NumPy 矩阵前向推理（根据 `.npz` 矩阵维度自动适配任意 $H_{\text{dim}}$），将局部均值旋回世界坐标返回，同时更新 `self.latest` 与 `self.latest_std`（`(H, 2)`）。
 
 ### P-T3：不确定度感知的 Swept TTC 与车身尺寸透传（`src/pbs/risk/`）
 1. **车身尺寸透传**：
@@ -163,13 +165,16 @@ C (M3 pbs.sim / pbs.demo)           D (M4 pbs.eval / pbs.systems / experiments)
 - `src/pbs/types.py`：`RiskContext` 追加 `vehicle_length: float = 5.0, vehicle_width: float = 2.5`。
 - `src/pbs/sim/simulator.py`：`run_sim(...)` 追加 `vehicle_length: float = VEHICLE_LENGTH, vehicle_width: float = VEHICLE_WIDTH` 并透传至 `RiskContext` 与碰撞函数。
 
-### C-T2：三级滞回分级制动 + Jerk 限幅（`StagedBrakingPolicy`）
+### C-T2：三级滞回分级制动 + 双档 Jerk 限幅（`StagedBrakingPolicy`）
+- 完整数学定义、建压时间线与参考代码见专项规范：**[docs/staged_braking_and_jerk.md](staged_braking_and_jerk.md)**。
 - 在 `src/pbs/sim/policy.py` 新增 `StagedBrakingPolicy`（对齐 ISO 15622 / Euro NCAP 分级逻辑）：
   - **状态与目标加速度**：
     - `hard_brake`（`TTC < t_on_hard=1.5 s`，退出 `t_off_hard=2.0 s`）：目标 `-6.0 m/s²`；
     - `soft_brake`（`1.5 s ≤ TTC < t_on_soft=3.0 s`，退出 `t_off_soft=3.5 s`）：目标 `-2.5 m/s²`；
     - `recover` / `cruise`（`TTC > 3.5 s`）：若 $v < v_{\text{target}}$ 则以 `+1.5 m/s²` 温和恢复至 $v_{\text{target}}$，否则 `0.0 m/s²`。
-  - **Jerk 限幅**：每步实际加速度 $a_k = \text{clip}(a_{\text{target}}, a_{k-1} - J_{\max}\Delta t, a_{k-1} + J_{\max}\Delta t)$，默认 `max_jerk = 10.0 m/s³`。
+  - **双档 Jerk 限幅**：
+    - 处于 `hard_brake`（紧急避险优先）：使用 **`jerk_hard = 20.0 m/s³`**（每 0.1 s 步变化 `2.0 m/s²`，0.3 s 快速建压至 `-6.0 m/s²`；若已处于 `-2.5 m/s²` 预制动底压则仅需 **0.2 s** 踩满）；
+    - 处于 `soft_brake` / `recover` / `cruise`（舒适平顺优先）：使用 **`jerk_soft = 5.0 m/s³`**（每 0.1 s 步变化 `0.5 m/s²`，符合 ISO 15622 舒适限值）。
 - `simulator.py` 支持连续加速度运动学步进（含 `a > 0` 恢复加速与步内刹停/达速截断）。
 
 ### C-T3：因果缓存高斯观测噪声（`GaussianObservationModel`）
