@@ -14,7 +14,7 @@
 | A | Persistent | 场景 | M1 `pbs.data` |
 | D | yj | 评估与实验 + 统筹 | M4 `pbs.eval`、`pbs.systems` |
 
-完整方案见 [docs/spec.md](docs/spec.md)（当前 v2；模块分工与排期见 §2、§4、§5）。 后续闭环实验使用 [L2 基线规范](docs/l2-baseline.md)中的滞回制动和定向矩形车身。
+完整方案见 [docs/spec.md](docs/spec.md)（当前 v2；模块分工与排期见 §2、§4、§5）；当前进度见 [docs/status.md](docs/status.md)。后续主线闭环实验使用 [L2 基线规范](docs/l2-baseline.md)的滞回制动和定向矩形车身。A 的冻结 Waymo 案例显式使用圆形兼容参数，见下方 L3 说明。
 
 ## Motivation
 
@@ -141,6 +141,7 @@ python examples/cut_in_demo.py
 | `experiments/exp03_failure_boundary.py` | **Reactive / CV / CA / Oracle 四边界叠加图**（`--quick`） | `exp03_boundaries.png` |
 | `experiments/exp04_latency.py` | 感知延迟 τ ∈ [0, 300] ms 敏感性 | _TBD_（L3） |
 | `experiments/exp05_cut_in_lead_time.py` | Reactive vs CV / CTRV 的 cut-in lead time（`--quick`） | `exp05_lead_time.png` |
+| `experiments/exp07_real_clip.py` | **A 的 L3**：Waymo 5+5 首批、真实危险/误刹说明案例、CV ADE/FDE | `outputs/figures/exp07_real_{timeline,ade,vs_synth}.png` |
 
 A 的 M1 同时是 CA 的评测底座：`ca_scenario_set()`（12 个带纵向加速度的切入）、`Trajectory.accel` 真值、`prediction_slices()` 固定切片。用法与坑见 [docs/CA_scenario_support.md](docs/CA_scenario_support.md)。
 
@@ -161,7 +162,7 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 ## Limitations
 
 - 点质量运动 + 随航向旋转的矩形车身（长 5.0 m、宽 2.5 m），无车辆动力学；仅纵向控制，无 steering。
-- 场景为合成构造（quintic 换道 + 横向加速度上限），非真实交通分布。
+- 主网格为合成构造（quintic 换道 + 横向加速度上限）；L3 真实回放为少量选定窗口，非真实交通分布。
 - 无 perception：直接使用轨迹级数据。
 - 2D 简化。
 
@@ -190,4 +191,39 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 
 - **Toy 数据**：从课程仓库 `AIE1903_AD/data/sample_trajectories/` 复制到本仓库 `data/sample_trajectories/`。
   （若直接放在 `data/` 根下也能读：`load_toy()` 会回退并在 stderr 提示。）
-- **nuScenes mini**（可选，L3）：自行下载；所有结论须在合成场景上独立成立。
+- **Waymo Open Motion v1.2 validation**（L3）：本机原始分片在 `waymo/v1.2/validation/`，
+  不入 git；仓库内 `tests/fixtures/` 的 12 个真实 NPZ 快照可独立复现，不需要 TensorFlow 或原始分片。
+  nuScenes 的历史 loader 占位接口保留兼容。
+
+### A 的 L3 真实数据交付
+
+```powershell
+python -m pytest tests/test_womd.py -q
+python experiments/exp07_real_clip.py
+```
+
+扫描 2,321 条记录得到 40 个切入目标窗口和 435 个对照窗口。首批按几何顺序选 5+5，
+均不触发刹车；完整切入审计另外冻结了危险和误刹说明案例。
+危险案例 `6e86a639df5d4fa1`：Reactive 3.2 s、CV 2.9 s 刹车，CV 提前 **0.3 s**，两者都避免碰撞。
+另一个 benign 案例两者均在 4.8 s 误刹。说明案例按结果挑选，**不进入首批统计**。
+本实验默认比较 Reactive/CV，显式传 `r_safe=2.5` 保持冻结案例的圆形兼容配置。
+主线 L2 使用默认矩形 + Swept TTC，不能混用两套结果。CA/CTRV/LR 已合入 main，可通过 `--systems` 加入；
+Oracle 因真值未覆盖完整 6 s 仿真 + 3 s 预测而跳过，GRU 仍未注册。
+
+已保存三张主图、地图/片段 BEV、两组表、说明案例表、ADE/FDE、逐帧日志和全候选审计。
+方法、实际数字、英文报告段落见 [L3 case study](docs/L3_waymo_case_study.md)，
+给 P 的契约和 A 的答辩说明见 [L3 A handoff](docs/L3_A_handoff.md)。
+
+需要从原始数据重新选片时：
+
+```powershell
+python -m pip install -e ".[womd]"
+python scripts/inspect_womd.py
+python scripts/export_womd_clips.py
+python scripts/audit_womd_cut_ins.py
+python experiments/exp07_real_clip.py
+```
+
+本车按 `sdc_track_index` 标识；每窗 81 个连续有效帧，`t=[-2,6]`，只对齐微小时间戳抖动、不插值轨迹。
+使用固定 anchor 坐标与直线 ego 路径，周车不响应本车，且只回放选中的单目标。
+这些结果支持接口迁移和案例行为，不能作为总体安全收益或学习模型评测的证据。

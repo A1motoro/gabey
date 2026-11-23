@@ -98,4 +98,3 @@ def kind_label(scenario: Scenario) -> str:
     if scenario.kind == "cut_in" and scenario.params.get("a_cutter"):
         return "cut_in_ca"
     return scenario.kind
-

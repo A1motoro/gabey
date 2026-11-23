@@ -5,4 +5,4 @@ matplotlib>=3.7
 pytest>=7.4
 black>=24.0
 ruff>=0.4
-# optional: nuscenes-devkit   (skip if install fails)
+# Raw Waymo reading only: pip install -e ".[womd]" (NPZ experiments need no extra packages)

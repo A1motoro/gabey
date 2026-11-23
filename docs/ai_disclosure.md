@@ -4,6 +4,8 @@
 
 | 日期 | 成员 | 工具 | 用途 | 涉及文件 | 人工检查方式 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-23 | A | OpenAI Codex | 解决 PR #16 与 main 的 README / AI 声明 / 接口 / spec 冲突，保留双方贡献；显式固定 L3 圆形参数、同步已实现预测器状态、添加 Oracle 真值覆盖检查 | 四个冲突文档、exp07、审计脚本、L3 测试与报告 | 合并 main a3f91cb 后 389 passed；Ruff 通过；Reactive/CV 冻结时刻一致；可选 CA 接入通过，Oracle 未来不足明确跳过。人工代码与配置复核仍由 A 完成 |
+| 2026-11-23 | A | OpenAI Codex | 完成 L3 Waymo 原始读取、官方 SDC 索引、连续有效帧筛选、固定坐标变换、12 个快照、Reactive/CV 与 ADE/FDE、40 候选全审计、危险与误刹说明案例、报告和交接；修正既有 demo 测试的 Windows 临时目录 / 端口预留 / UTF-8 解码 | `pbs/data/womd.py`、loader、vendor/descriptor、scripts、exp07、NPZ、L3 测试与文档 | AI 实测 2321 记录两处 CRC32C、12 快照 SHA256、NPZ 禁止 protobuf/原始数据访问时可读、39 项新增测试、三图视觉核验；完整测试与限制见 `L3_waymo_case_study.md`。首批和按结果挑选的说明案例分开记录，未虚构 CA/Oracle/GRU 结果。人工逐行审阅、报告解释与引用复核仍由 A 完成，未声称已人工验收 |
 | 2026-11-18 | P（华华） | OpenAI Codex | 同步合并 PR #8 后的 main，实现 P L3 LR 位置窗口拟合，增加 exp01 五模型对比并通过 PR 合并 | `src/pbs/prediction/regression.py`、`tests/test_l3_predictors.py`、`experiments/exp01_predictor_ade.py`、README、接口追加约定、L3 验证报告、贡献记录 | LR 专项 32 passed；解析直线、噪声、窗口隔离、延迟及既有 D 矩阵验证；回归与实测误差见 `docs/l3-validation.md`。人工复核待 P/C，未声称真实交通安全收益 |
 | 2026-11-18 | P（华华） | OpenAI Codex | 审核并修正 PR #8：无可行预算时的阈值回退、完整轨迹场景 ID、不可见碰撞标记、README 失效链接；保留 P 的 L2 预测器后合并 | `src/pbs/eval/sweep.py`、`src/pbs/eval/plots.py`、`tests/test_sweep.py`、README、D 验证说明、本记录 | 新增预算回退/缓存隔离/标记可见性测试；exp02/03/05 quick 重跑并核对 CSV 与图；已知 Windows Demo 端口测试单独排除，人工复核仍由组员完成 |
 | 2026-11-18 | P（华华） | OpenAI Codex | pull 最新 main 后在独立分支实现 L2 CA/CTRV/Oracle、解析及集成测试、exp01 同切片误差验证，提交 PR | 三个 L2 预测器、对应测试、`experiments/exp01_predictor_ade.py`、README、接口追加约定、L2 验证报告与贡献记录 | AI 用解析公式、观测隔离、原仿真接口及 CLI 检查；L2 专项 69 passed，main 8072b02 上回归 286 passed / 1 deselected，Ruff/Black 通过；已有 Windows Demo 端口检查超时单独记录于 `docs/l2-validation.md`。人工复核待 P/C 查看并解释模型适用条件 |

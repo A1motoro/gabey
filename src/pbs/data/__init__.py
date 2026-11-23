@@ -11,6 +11,7 @@ from pbs.data.loader import (
     load_nuscenes_tracks,
     load_toy,
     load_toy_ego,
+    load_womd_tracks,
 )
 from pbs.data.scenarios import (
     CA_GRID,
@@ -54,6 +55,7 @@ __all__ = [
     "load_nuscenes_tracks",
     "load_toy",
     "load_toy_ego",
+    "load_womd_tracks",
     "make_scenario",
     "min_lc_duration",
     "peak_lateral_acc",

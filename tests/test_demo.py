@@ -1,6 +1,8 @@
 """Demo output must be faithful to the Python simulation, not a scripted animation."""
 
 import json
+import os
+import socket
 import subprocess
 import sys
 import threading
@@ -144,9 +146,17 @@ def test_collision_case_is_not_relabelled_safe():
     assert any(s["summary"]["collision"] for s in result["systems"].values())
 
 
-def test_http_assets_errors_and_results():
+def test_http_assets_errors_and_results(tmp_path):
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", 0), DemoHandler)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), DemoHandler, bind_and_activate=False)
+        if os.name == "nt":
+            # Windows SO_REUSEADDR can let the subprocess bind the reserved port.
+            # Reserve it exclusively so the port-in-use assertion tests the same
+            # condition as on POSIX, without changing the production server.
+            server.allow_reuse_address = False
+            server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        server.server_bind()
+        server.server_activate()
     except PermissionError:
         pytest.skip("Local socket binding is disabled in this sandbox.")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -211,9 +221,11 @@ def test_http_assets_errors_and_results():
                 "--port",
                 str(server.server_port),
             ],
-            cwd="/tmp",
+            cwd=tmp_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            env=dict(os.environ, PYTHONIOENCODING="utf-8"),
             timeout=10,
         )
         assert completed.returncode == 1

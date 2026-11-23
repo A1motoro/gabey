@@ -11,6 +11,25 @@
 - `Scenario.ego_path` 同时是本车道中心线，车道宽 `Scenario.lane_width`（默认 3.5 m）。
 - 每个 agent 必须有唯一 `agent_id`（Oracle 依赖）。
 
+### M1 追加：Waymo L3（2026-11-23，A）
+
+- 新增 `load_womd_tracks(path, track_index=None, anchor=20, duration=6, history_steps=20,
+  group="cut_in", scenario_id=None)`。NPZ 返回快照内周车；多记录 TFRecord 必须指定 `scenario_id`，
+  避免默默选错片段。旧 `load_nuscenes_tracks` 占位接口保留兼容。
+- `womd.real_scenario(scene, track_index, anchor=..., group=...)` 返回固定 anchor 坐标的
+  `Scenario(kind="real_cut_in"/"real_control")`；`ego_start=(0,0,0,v0)`、直线 `ego_path` 足够长。
+  本次仅保留 ego 直行窗口和选定单目标，不把这些真实 kind 加入合成 `KINDS`/96 场景分母。
+- 官方 `sdc_track_index` 校验后排除 ego；整段 ego/目标 `valid=True`；无跨空洞插值。
+  `t=[-2,6]`、81 帧；保留真实微抖时间戳并对齐名义 10 Hz，元数据记录误差。
+- `Trajectory.v/heading` 编码 Waymo 速度向量；`accel=None`。拟合横向加速度只放诊断元数据。
+- `save_clip/load_clip` 使用 NumPy 数组和 JSON、`allow_pickle=False`。快照与实验不需要
+  protobuf/TFRecord；只有原始读取需要 `pip install -e ".[womd]"`。
+- L3 冻结回放与审计显式传 `duration=sc.params["duration"], r_safe=2.5`，保留圆形兼容配置；
+  L2 主线继续使用默认矩形，数值不能混用。Forecast 评测的 20 帧含当前帧（跨度 1.9 s），
+  真值从下一帧开始；GRU 的窗口预处理与回退计数仍由 P 明确实现。
+- `params.cohort="illustrative"` 的危险/误刹说明案例按结果选择，必须与首批统计分开。
+  数字与复现见 [L3_waymo_case_study.md](L3_waymo_case_study.md)。
+
 ## 数据结构 — `pbs.types`
 
 | 类型 | 用途 | 字段 |
@@ -38,6 +57,8 @@ policy.decide(ttc) → brake / cruise
 | 模块 | 签名 | Owner | 状态 |
 | --- | --- | --- | --- |
 | M1 | `load_toy() -> list[Trajectory]` | A | ✅ |
+| M1 | `load_womd_tracks(path, ...) -> list[Trajectory]`；`womd.real_scenario(scene, track_index, ...) -> Scenario` | A | ✅ L3：Waymo 原始 / NPZ，ego 排除 |
+| M1 | `womd.load_clip(path)` / `save_clip(scenario, path, evidence=...)`；`read_scenarios(path)` | A | ✅ L3：NPZ 不需 protobuf / 原始数据；原始读取验证 CRC32C |
 | M1 | `make_scenario(kind, **params) -> Scenario` | A | ✅ |
 | M1 | `quintic_lateral(y0, y1, T, t, t0=0) -> ndarray`；`peak_lateral_acc(dy, T)` | A | ✅ |
 | M1 | `quintic_lateral_vel / quintic_lateral_acc`（同上签名）；`min_lc_duration(dy, max_lat_acc)` | A | ✅ 新增 |
@@ -82,9 +103,9 @@ policy.decide(ttc) → brake / cruise
 
 ### M1 补充约定（2026-10，A）
 
-- `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。闭环实验显式传入评分时长。若为 Oracle 生成了额外的未来轨迹，仍使用[实验设定的评分时长](l2-baseline.md#c-的复现配置与-d-的接入)。
-- `Scenario.agents` 恒为 1 个元素（每类场景单目标）；`agent_id ∈ {"cutter", "lead", "crosser"}`。
-- `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。
+- 合成 `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。闭环实验显式传入评分时长；`run_sim` 默认 10 s。若为 Oracle 生成额外未来轨迹，仍使用[实验设定的评分时长](l2-baseline.md#c-的复现配置与-d-的接入)。
+- 合成 `Scenario.agents` 恒为 1 个元素；`agent_id ∈ {"cutter", "lead", "crosser"}`。
+- 合成 `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。真实 Waymo kind 单独见前文 L3 约定。
 - `load_toy()` 不含 ego（`agent_id` = 文件 stem）；ego 用新增的 `load_toy_ego()`。
 
 ### M1 追加：CA 支持（2026-11-18，A）

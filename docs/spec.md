@@ -25,7 +25,7 @@
 
 ### 1.2 Out of scope
 
-CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Transformer；3D 与车辆动力学（采用二维点质量运动和简化碰撞几何）。nuScenes mini 仅作可选增强，优先级低于场景物理合理性。
+CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Transformer；3D 与车辆动力学（采用二维点质量运动和简化碰撞几何）。Waymo Open Motion 真实轨迹回放仅作可选增强，优先级低于场景物理合理性（2026-11 将 nuScenes 改为原生 10 Hz WOMD）。
 
 ### 1.3 分层交付 (fallback ladder)
 
@@ -34,7 +34,7 @@ CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Trans
 | L0 底线 | 接口冻结 + skeleton | — |
 | L1 保底 | CV + ADE/FDE；**Reactive vs CV** 在 cut_in 上的 TTC 刹车与 timeline；lead time | "prediction 让刹车提前了 x 秒" |
 | L2 核心 | + CA、CTRV、Oracle；counterfactual 误报 + trade-off；**四边界叠加图** | "安全区扩大了多少 / 预测误差代价多少" |
-| L3 加码 | LR predictor；latency 实验；nuScenes | 可随时裁剪 |
+| L3 加码 | LR predictor；latency 实验；Waymo Open Motion 真实回放 | 可随时裁剪；A 的数据与 Reactive/CV 证据已完成，见 `L3_waymo_case_study.md` |
 
 ### 1.4 关键定义：Reactive ≠ CV（proposal 中须写死）
 
