@@ -13,7 +13,7 @@ simulation and compares the two run by run:
 - ``false_brakes_on_changed_labels``: false brakes of the saved matrix in scenarios
   whose label changed.
 
-It changes no label and no metric.
+The saved CSV is only read. The differences found are printed and written to a JSON file.
 """
 
 import argparse

@@ -101,11 +101,12 @@ first 15 s; Reactive / CV / CA / Oracle):
 - **Oracle has no false brake**: 0 of 47 at both thresholds (`oracle_false_brake_free` in
   `exp02_summary.json`). Oracle reads the real future, so a false brake by Oracle means
   the label missed a contact. Under one window it had three.
-- **A longer outcome window changes no score.** `experiments/check_outcome_window.py`
-  reran each saved matrix for 25 s instead of 19 s. exp02: no collision flag changes, no
-  brake inside the first 15 s changes, and one label changes: `lead_brake` init_gap 80,
-  decel 0.3 is benign at 19 s and makes never-brake contact at 23.36 s. No system brakes
-  in its first 15 s, so it adds no false brake. exp03 and exp05 quick grid: nothing changes.
+- **A longer outcome window changes one label and no collision or false-brake count.**
+  `experiments/check_outcome_window.py` reran each saved matrix for 25 s instead of 19 s.
+  exp02: no collision flag changes, no brake inside the first 15 s changes, and one label
+  changes: `lead_brake` init_gap 80, decel 0.3 is benign at 19 s and makes never-brake
+  contact at 23.36 s. No system brakes in its first 15 s, so the false-brake counts stay
+  1 / 4 / 4 / 0; with a 25 s window their denominator would be 46 instead of 47. exp03 and exp05 quick grid: nothing changes.
 
 What the rule does not settle: a contact after 19 s still leaves the scenario benign (the
 one case above), and the six late-contact scenarios are not scored at all. The 4 s margin

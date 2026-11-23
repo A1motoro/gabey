@@ -49,7 +49,8 @@ in `never_brake_contact_t`, and the two windows in `decision_duration` and
 
 `check_outcome_window.py` reads `outputs/logs/exp02.csv`, so run it after exp02. It
 reruns that matrix for 25 s instead of 19 s and lists every label, collision flag and
-in-window brake that differs. It changes no label. For the boundary grid:
+in-window brake that differs. The saved CSV is only read; the differences go to
+`exp02_outcome_window.json`. For the boundary grid:
 
 ```bash
 python experiments/check_outcome_window.py --scenarios boundary-quick --csv outputs/logs/exp03.csv
