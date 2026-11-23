@@ -8,10 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pbs.eval.counterfactual import is_benign
+from pbs.eval.counterfactual import is_benign, never_brake_label
 from pbs.eval.plots import plot_boundaries
 from pbs.eval.sweep import (
     failure_boundary,
+    late_contact_outcomes,
     lead_times,
     rescue_rate,
     run_matrix,
@@ -40,13 +41,13 @@ REQUIRED = {
 
 def test_run_matrix_schema_and_cached_benign(monkeypatch):
     calls = {"n": 0}
-    real = is_benign
+    real = never_brake_label
 
-    def wrapped(scenario, **kwargs):
+    def wrapped(scenario, decision_duration=None, **kwargs):
         calls["n"] += 1
-        return real(scenario, **kwargs)
+        return real(scenario, decision_duration, **kwargs)
 
-    monkeypatch.setattr("pbs.eval.sweep.is_benign", wrapped)
+    monkeypatch.setattr("pbs.eval.sweep.never_brake_label", wrapped)
     slow = straight_scenario(lead_v=10.0)
     fast = straight_scenario(lead_v=20.0)
     slow.params = {"gap_d": 30.0, "rel_v": 5.0}
@@ -68,6 +69,12 @@ def test_run_matrix_schema_and_cached_benign(monkeypatch):
     assert set(labels) == {False, True}
     assert frame.loc[frame["rel_v"] < 0, "benign"].all()
     assert not frame.loc[frame["rel_v"] > 0, "benign"].any()
+    assert set(frame["label"]) == {"dangerous", "benign"}
+    assert (frame["decision_duration"] == 8.0).all()
+    assert (frame["outcome_duration"] == 8.0).all()
+    dangerous = frame.loc[frame["label"] == "dangerous"]
+    assert np.allclose(dangerous["never_brake_contact_t"], 5.0)
+    assert frame.loc[frame["benign"], "never_brake_contact_t"].isna().all()
 
 
 def test_tradeoff_rates_ignore_the_other_class():
@@ -171,11 +178,11 @@ def test_benign_cache_separates_same_endpoints_with_different_interior(monkeypat
     second.agents[0].y[10] += 5.0
     calls = []
 
-    def label(sc, **kwargs):
+    def label(sc, decision_duration=None, **kwargs):
         calls.append(sc)
-        return sc is second
+        return ("benign", None) if sc is second else ("dangerous", 0.5)
 
-    monkeypatch.setattr("pbs.eval.sweep.is_benign", label)
+    monkeypatch.setattr("pbs.eval.sweep.never_brake_label", label)
     frame = run_matrix(["cv"], [first, second], [2], sim_kwargs={"duration": 1})
     assert len(calls) == 2
     assert frame["scenario_id"].nunique() == 2
@@ -351,3 +358,96 @@ def test_plot_timeline_ignores_unexecuted_terminal_action():
     plot_timeline(log, ax=ax)
     assert len(ax.patches) == 1
     plt.close(fig)
+
+
+def test_evaluate_counts_only_brakes_inside_the_decision_window():
+    from pbs.eval.metrics import evaluate
+    from pbs.types import SimLog
+
+    log = SimLog(
+        t=np.array([0.0, 0.1, 0.2, 0.3]),
+        ego_x=np.array([0.0, 1.0, 2.0, 3.0]),
+        ego_y=np.zeros(4),
+        ego_v=np.full(4, 10.0),
+        ego_a=np.zeros(4),
+        action=["cruise", "cruise", "brake", "brake"],
+        ttc=np.array([np.inf, np.inf, 0.5, 0.5]),
+        min_dist=5.0,
+        collision=False,
+        executed_steps=3,
+    )
+    assert evaluate(log, benign=True)["false_brake"]
+    assert evaluate(log, benign=True, decision_end=0.3)["false_brake"]
+    late = evaluate(log, benign=True, decision_end=0.2)
+    assert not late["false_brake"]
+    assert late["brake_onset_t"] == pytest.approx(0.2)
+    assert not evaluate(log, benign=False, decision_end=0.3)["false_brake"]
+
+
+def test_never_brake_label_has_three_classes_with_two_windows():
+    # 25 m of clearance closes at 5, 3 and -5 m/s: contact at 5.0 s, 8.33 s, never.
+    early, late, never = (straight_scenario(lead_v=v) for v in (10.0, 12.0, 20.0))
+    assert never_brake_label(early, 7.0, duration=10.0) == ("dangerous", pytest.approx(5.0))
+    label, contact = never_brake_label(late, 7.0, duration=10.0)
+    assert label == "late_contact" and contact == pytest.approx(25.0 / 3.0, abs=0.01)
+    assert never_brake_label(never, 7.0, duration=10.0) == ("benign", None)
+    assert never_brake_label(late, duration=10.0)[0] == "dangerous"
+    assert never_brake_label(late, duration=7.0) == ("benign", None)
+    assert is_benign(late, duration=7.0)
+    assert never_brake_label(late, 10.0, duration=10.0)[0] == "dangerous"
+
+
+@pytest.mark.parametrize("decision", [0.0, -1.0, 10.5])
+def test_never_brake_label_rejects_a_decision_window_outside_the_run(decision):
+    with pytest.raises(ValueError):
+        never_brake_label(straight_scenario(), decision, duration=10.0)
+
+
+def test_never_brake_label_needs_the_run_duration_for_two_windows():
+    with pytest.raises(ValueError):
+        never_brake_label(straight_scenario(), 5.0)
+
+
+def test_run_matrix_keeps_late_contact_out_of_both_rates():
+    early, late, never = (straight_scenario(lead_v=v) for v in (10.0, 12.0, 20.0))
+    for scenario, rel in ((early, 5.0), (late, 3.0), (never, -5.0)):
+        scenario.params = {"gap_d": 30.0, "rel_v": rel}
+    frame = run_matrix(
+        ["cv"], [early, late, never], [2.0], sim_kwargs={"duration": 10.0}, decision_duration=7.0
+    )
+    rows = frame.set_index("rel_v")
+    assert rows["label"].to_dict() == {5.0: "dangerous", 3.0: "late_contact", -5.0: "benign"}
+    assert rows["benign"].to_dict() == {5.0: False, 3.0: False, -5.0: True}
+    assert (frame["decision_duration"] == 7.0).all()
+    assert (frame["outcome_duration"] == 10.0).all()
+    # CV brakes for the late contact inside the decision window. It is not a false brake.
+    assert rows.loc[3.0, "brake_onset_t"] == pytest.approx(6.4)
+    assert not rows.loc[3.0, "false_brake"]
+    assert not frame["collision"].any()
+    table = tradeoff(frame).iloc[0]
+    assert (table["n_dangerous"], table["n_benign"], table["n_late_contact"]) == (1, 1, 1)
+    assert table["false_brake_rate"] == 0.0
+    cells = failure_boundary(frame, "cv")
+    assert cells["dangerous"].sum() == 1
+    assert rescue_rate(frame, "cv") == 1.0
+    outcome = late_contact_outcomes(frame).iloc[0]
+    assert (outcome["n_late_contact"], outcome["braked_in_window"]) == (1, 1)
+    assert (outcome["braked_later"], outcome["collided"]) == (0, 0)
+    # With a 6 s decision window the same brake at 6.4 s comes after it.
+    shorter = run_matrix(
+        ["cv"], [late], [2.0], sim_kwargs={"duration": 10.0}, decision_duration=6.0
+    )
+    outcome = late_contact_outcomes(shorter).iloc[0]
+    assert (outcome["braked_in_window"], outcome["braked_later"]) == (0, 1)
+
+
+def test_tradeoff_reads_two_class_tables_without_a_label_column():
+    frame = pd.DataFrame(
+        [
+            _row("a", "cv", 2.0, benign=False, collision=True, false_brake=False),
+            _row("b", "cv", 2.0, benign=True, collision=False, false_brake=True),
+        ]
+    )
+    table = tradeoff(frame).iloc[0]
+    assert (table["n_dangerous"], table["n_benign"], table["n_late_contact"]) == (1, 1, 0)
+    assert late_contact_outcomes(frame).empty
