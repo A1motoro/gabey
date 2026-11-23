@@ -41,9 +41,9 @@ function panelCenter(name,t){
 function canvasContext(canvas){const r=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;if(canvas.width!==Math.round(r.width*dpr)||canvas.height!==Math.round(r.height*dpr)){canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);}const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,r.width,r.height);return[ctx,r.width,r.height];}
 function rounded(c,x,y,w,h,r,fill){c.fillStyle=fill;c.beginPath();c.roundRect(x,y,w,h,r);c.fill();}
 function car(c,x,y,angle,scale,color,brake,label,options={}){
- c.save();c.translate(x,y);c.rotate(-angle);const footprint=data.fixed.r_safe/2.5,l=2.2*scale*footprint,w=1.05*scale*footprint;
+ c.save();c.translate(x,y);c.rotate(-angle);const l=data.fixed.vehicle_length_m*scale,w=data.fixed.vehicle_width_m*scale;
  c.shadowColor='#17252150';c.shadowBlur=7;c.shadowOffsetX=3;c.shadowOffsetY=5;
- rounded(c,-l/2,-w/2+3,l,w,4,color==='blue'?'#175581':'#9e501f');c.shadowColor='transparent';
+ rounded(c,-l/2,-w/2,l,w,4,color==='blue'?'#175581':'#9e501f');c.shadowColor='transparent';
  rounded(c,-l/2,-w/2,l,w-1,4,color==='blue'?'#318ac5':'#e69b4a');
  rounded(c,-l*.22,-w*.38,l*.47,w*.72,3,color==='blue'?'#80bdd8':'#f1c184');
  rounded(c,l*.14,-w*.33,l*.11,w*.62,2,'#244a53');rounded(c,-l*.22,-w*.31,l*.09,w*.58,2,'#35515a');

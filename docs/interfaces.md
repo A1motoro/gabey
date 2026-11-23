@@ -2,6 +2,8 @@
 
 > W4 冻结。冻结后**只加不改**：可新增字段 / 可选参数，不得重命名、删除或改变语义。改动需在 PR 中 @ 全员。设计依据见 [spec.md](spec.md)。
 
+[L2 基线规范](l2-baseline.md)定义滞回设置、定向矩形和距离口径。位置字段表示车身中心。L2 将 `run_sim` 和 `assess_risk` 的 `r_safe` 默认值从 2.5 改为 `None`。省略参数会选择 L2 几何。复现 L1 时显式传入 `r_safe=2.5`。车辆真值扫掠在每个子步内以中点航向做平移扫掠，旋转和加速度为子步近似。
+
 ## 约定
 
 - 单位：m / s / m·s⁻¹ / rad；统一世界坐标（不使用 grid cell）。
@@ -22,7 +24,8 @@
 - `Trajectory.v/heading` 编码 Waymo 速度向量；`accel=None`。拟合横向加速度只放诊断元数据。
 - `save_clip/load_clip` 使用 NumPy 数组和 JSON、`allow_pickle=False`。快照与实验不需要
   protobuf/TFRecord；只有原始读取需要 `pip install -e ".[womd]"`。
-- 仿真明确 `duration=sc.params["duration"]`。Forecast 评测的 20 帧含当前帧（跨度 1.9 s），
+- L3 冻结回放与审计显式传 `duration=sc.params["duration"], r_safe=2.5`，保留圆形兼容配置；
+  L2 主线继续使用默认矩形，数值不能混用。Forecast 评测的 20 帧含当前帧（跨度 1.9 s），
   真值从下一帧开始；GRU 的窗口预处理与回退计数仍由 P 明确实现。
 - `params.cohort="illustrative"` 的危险/误刹说明案例按结果选择，必须与首批统计分开。
   数字与复现见 [L3_waymo_case_study.md](L3_waymo_case_study.md)。
@@ -33,8 +36,8 @@
 | --- | --- | --- |
 | `Trajectory` | agent 轨迹 | `t, x, y, v, heading: (N,)`, `agent_type`, `agent_id` |
 | `Scenario` | 仿真输入 | `ego_start=(x,y,heading,v)`, `ego_path: (M,2)`, `agents`, `dt`, `params`, `kind`, `lane_width` |
-| `SimLog` | 仿真输出 | `t, ego_x, ego_y, ego_v, ego_a, ttc: (n,)`, `action`, `min_dist`, `collision` |
-| `RiskContext` | C → P，每步只读 | `t_now, ego_xy, ego_heading, ego_v, ego_future: (H,2), ego_path, lane_width, horizon, dt, r_safe` |
+| `SimLog` | 仿真输出 | `t, ego_x, ego_y, ego_v, ego_a, ttc: (n,)`, `action`, `min_dist`, `collision`。可选字段 `executed_steps`、`first_collision_t`、`min_dist_until_contact` 见[日志字段说明](l2-baseline.md#日志与距离口径) |
+| `RiskContext` | C → P，每步只读 | `t_now, ego_xy, ego_heading, ego_v, ego_future: (H,2), ego_path, lane_width, horizon, dt, r_safe, ego_future_heading` |
 | `RiskEstimate` | P → C | `ttc`（无冲突 inf）, `conflict_step`, `considered`（Reactive 忽略时 False） |
 
 ## P / C 边界
@@ -63,22 +66,46 @@ policy.decide(ttc) → brake / cruise
 | M1 | `ca_scenario_set() -> ScenarioSet`；`CA_GRID`（12 个带纵向加速度的 cut-in） | A | ✅ 新增（CA） |
 | M1 | `prediction_slices(scenario, history, horizon, stride) -> list[PredictionSlice]` | A | ✅ 新增（CA） |
 | M2 | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)` | P | 接口 ✅；`StaticPredictor` 占位 |
-| M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV ✅；其余 TODO（L2/L3） |
-| Risk | `assess_risk(ego_future, agent_future, dt, r_safe) -> RiskEstimate`（纯函数） | P | ✅ L1；严格距离 `< r_safe`，第 k 行时间 `(k+1)*dt` |
-| Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L1；Predictive 将延迟观测的预测对齐当前时间 |
-| M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency) -> SimLog` | C | ✅ skeleton |
+| M2 | `ConstantVelocity / ConstantAccel / CTRV / LinearRegression / Oracle` | P | CV / CA / CTRV / Oracle ✅ L2；LR ✅ L3 |
+| Risk | `assess_risk(ego_future, agent_future, dt, r_safe=None, *, ego_heading=None, agent_heading=None, pedestrian=False, ego_origin=None, agent_origin=None, ego_origin_heading=None, agent_origin_heading=None, swept=False) -> RiskEstimate` | P | `swept=False` 时第 k 行时间为 `(k+1)*dt`；`swept=True` 时必须同时提供 `ego_origin` 与 `agent_origin`，按步间线性扫掠（中点航向）返回连续 TTC `(k + fraction)·dt`。几何规则见 [L2 基线](l2-baseline.md#制动与碰撞) |
+| Risk | `RiskAssessor.assess(ctx, history) -> RiskEstimate`；`ReactiveAssessor`、`PredictiveAssessor(predictor)` | P | ✅ L2；Predictive 将延迟观测对齐当前时间；L2 矩形模式（`r_safe=None`）自动传起点并启用 `swept=True`，L1 圆形模式保持离散 |
+| M3 | `run_sim(scenario, assessor, policy, duration, horizon, r_safe, latency, collision_dt, …) -> SimLog` | C | 已实现 L2 闭环 |
 | M3 | `ego_rollout(path, s, v, horizon, dt)`、`in_collision(p, q, r_safe)` | C | ✅ |
-| M3 | `NeverBrakePolicy`、`TTCThresholdPolicy(ttc_threshold, a_brake)` | C | ✅ |
+| M3 | `HysteresisPolicy(t_on, t_off, a_brake)`、`NeverBrakePolicy`、`TTCThresholdPolicy(ttc_threshold, a_brake)` | C | 依次用于 L2 主实验、无制动对照和 L1 复现 |
 | M4 | `make_system(name)`；`SYSTEMS`、`CORE` | D | ✅ |
-| M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ |
-| M4 | `run_matrix`、`tradeoff`、`failure_boundary`、`safe_area`、`plot_boundaries` | D | TODO |
+| M4 | `is_benign(scenario) -> bool`；`evaluate(log, benign) -> dict` | D | ✅ L2；`evaluate` 额外返回 `first_collision_t` 与 `min_dist_until_contact`，并按首次接触截断 `brake_onset_t` |
+| M4 | `run_matrix(..., policy_kind="threshold", hysteresis_gap=1.0, a_brake=6.0)`、`tradeoff`、`failure_boundary`、`safe_area`、`rescue_rate`、`plot_boundaries` | D | ✅ L2；支持滞回策略并记录 `policy`/`t_on`/`t_off`/`geometry`/`horizon`/`first_collision_t`/`min_dist_until_contact`；`exp04` latency 仍为 L3 |
+
+### M2 追加：P L2（2026-11-18）
+
+- 原 `predict(history, horizon, dt)`、`bind(scenario)`、模型名称与时间语义不变。
+  CA 新增可选构造参数 `m=10`（整数 ≥ 3）；CTRV 新增 `m=10`（整数 ≥ 2）。
+- CA 从最近至多 m 帧位置按真实时间间隔作二次最小二乘拟合，不读取 `Trajectory.accel`
+  或对 `v` 差分；不足 3 帧使用 CV。沿拟合速度方向减速至零后停止该方向运动，
+  垂直方向加速度继续外推；最后两个位置相同或刹车拟合反向过冲时保持原位。
+- CTRV 从最近至多 m 帧 `heading` 解缠后拟合转率，以最后观测的 `v`/`heading`
+  外推圆弧；不足 2 帧或 `|yaw_rate| < 1e-8 rad/s` 使用原二维 CV。
+- Oracle 在 bind 时检查唯一非空 ID 并复制真值，以最后观测时间为起点查询，插值与
+  `state_at` 一致（超出范围保持端点）。只有真值覆盖所有请求时刻时才可解释为零预测误差上界；
+  用于长时域或延迟实验时，A/D 应保证足够的真值覆盖。重新 bind 会替换原场景映射。
+- 三个模型复用 L1 输入校验，允许 `horizon=0` 返回 `(0, 2)`，不修改输入。
+  延迟对齐继续由已有 `PredictiveAssessor` 完成，其网格间插值近似保持不变。
+
+### M2 追加：P L3（2026-11-18）
+
+- `LinearRegressionPredictor(m=10)` 已实现，模型名 `lr` 和原 `predict`/`bind` 接口不变。
+  m 为整数 ≥ 2；只取最近至多 m 个位置样本，按真实采样时间拟合 x(t)、y(t) 直线。
+- 查询时间仍为 `t_last + (k+1)·dt`。位置使用拟合截距而非强制经过最后噪声观测，
+  以保留窗口平滑效果；至少 2 帧时不使用速度/航向元数据或 `Trajectory.accel`。
+- 单帧按速度/航向退化为 CV；输入校验与 `(0, 2)` 空时域行为复用 L1。
+  不读取未来、不修改输入，延迟对齐由现有 `PredictiveAssessor` 完成。
+- D 的 `make_system("lr")` 已可直接使用。`CORE` 四边界集合保持原定义。
 
 ### M1 补充约定（2026-10，A）
 
-- `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。**`run_sim(..., duration=scenario.params["duration"])`**——
-  `run_sim` 的默认值是 10 s，不传会把慢速收敛组合误判成 benign。
-- 合成 `Scenario.agents` 恒为 1 个元素（每类场景单目标）；`agent_id ∈ {"cutter", "lead", "crosser"}`。
-- 合成 `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。
+- 合成 `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。闭环实验显式传入评分时长；`run_sim` 默认 10 s。若为 Oracle 生成额外未来轨迹，仍使用[实验设定的评分时长](l2-baseline.md#c-的复现配置与-d-的接入)。
+- 合成 `Scenario.agents` 恒为 1 个元素；`agent_id ∈ {"cutter", "lead", "crosser"}`。
+- 合成 `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。真实 Waymo kind 单独见前文 L3 约定。
 - `load_toy()` 不含 ego（`agent_id` = 文件 stem）；ego 用新增的 `load_toy_ego()`。
 
 ### M1 追加：CA 支持（2026-11-18，A）
@@ -98,7 +125,7 @@ policy.decide(ttc) → brake / cruise
 
 ## C 第一版实现补充（2026-10-20）
 
-本节为 C 本次兼容扩展与集成说明；上表保留原骨架记录，不表示 A/P TODO 已完成。
+本节记录 C 第一版的兼容扩展和时间语义。
 详见 [C baseline 接入与降级策略](C_baseline.md)。提交 PR 时请提示 A/P/D 审阅以下行为。
 
 - 新增 `HysteresisPolicy(t_on=2, t_off=3, a_brake=6)`，支持 `decide(ttc)` 与 `reset()`。

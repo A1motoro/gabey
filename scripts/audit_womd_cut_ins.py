@@ -42,7 +42,7 @@ def main(args):
                 continue
             for row in targets[scene.scenario_id]:
                 sc = real_scenario(scene, int(row["track_index"]), anchor=int(row["anchor"]))
-                benign = is_benign(sc, duration=6)
+                benign = is_benign(sc, duration=6, r_safe=2.5)
                 result = {
                     "clip": scene.scenario_id,
                     "track_id": sc.params["track_id"],
@@ -52,7 +52,10 @@ def main(args):
                 }
                 for system in ("reactive", "cv"):
                     metrics = evaluate(
-                        run_sim(sc, make_system(system), HysteresisPolicy(), duration=6), benign
+                        run_sim(
+                            sc, make_system(system), HysteresisPolicy(), duration=6, r_safe=2.5
+                        ),
+                        benign,
                     )
                     onset = metrics["brake_onset_t"]
                     metrics["brake_onset_t"] = None if onset is None else float(onset)

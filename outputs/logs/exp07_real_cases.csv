@@ -1,5 +1,5 @@
-clip,group,cohort,system,collision,min_dist,brake_onset_t,false_brake,benign,lead_time_s,ade_3s_m,fde_3s_m
-b51cfccc51400468,cut_in,illustrative,reactive,False,9.979798875543555,4.800000000000001,True,True,0.0,,
-b51cfccc51400468,cut_in,illustrative,cv,False,9.979798875543555,4.800000000000001,True,True,0.0,3.316668998441497,9.410095562442761
-6e86a639df5d4fa1,cut_in,illustrative,reactive,False,4.881583925971151,3.2,False,False,0.0,,
-6e86a639df5d4fa1,cut_in,illustrative,cv,False,4.881583925971095,2.9000000000000004,False,False,0.2999999999999998,0.930325746681923,2.2223433268895483
+clip,group,cohort,system,collision,first_collision_t,min_dist,min_dist_until_contact,brake_onset_t,false_brake,benign,lead_time_s,ade_3s_m,fde_3s_m
+b51cfccc51400468,cut_in,illustrative,reactive,False,,9.979798875543555,9.979798875543555,4.800000000000001,True,True,0.0,,
+b51cfccc51400468,cut_in,illustrative,cv,False,,9.979798875543555,9.979798875543555,4.800000000000001,True,True,0.0,3.316668998441497,9.410095562442761
+6e86a639df5d4fa1,cut_in,illustrative,reactive,False,,4.881583925971151,4.881583925971151,3.2,False,False,0.0,,
+6e86a639df5d4fa1,cut_in,illustrative,cv,False,,4.881583925971095,4.881583925971095,2.9000000000000004,False,False,0.2999999999999998,0.930325746681923,2.2223433268895483

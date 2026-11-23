@@ -41,10 +41,10 @@ def test_demo_matches_simulation_and_is_strict_json(rel_v):
         assert shown["ttc"] == [float(t) if np.isfinite(t) else None for t in direct.ttc]
     if rel_v == 5:
         assert result["systems"]["reactive"]["summary"]["brake_onset_t"] == pytest.approx(2)
-        assert result["systems"]["cv"]["summary"]["brake_onset_t"] == pytest.approx(1.7)
-        assert result["lead_time_s"] == pytest.approx(0.3)
-        assert result["systems"]["reactive"]["summary"]["brake_count"] == 3
-        assert result["systems"]["cv"]["summary"]["brake_count"] == 5
+        assert result["systems"]["cv"]["summary"]["brake_onset_t"] == pytest.approx(1.0)
+        assert result["lead_time_s"] == pytest.approx(1.0)
+        assert result["systems"]["reactive"]["summary"]["brake_count"] == 2
+        assert result["systems"]["cv"]["summary"]["brake_count"] == 4
         for shown in result["systems"].values():
             assert shown["summary"]["brake_duration_s"] == pytest.approx(0.8)
             assert shown["braking"]["count"][-1] == shown["summary"]["brake_count"]
@@ -191,7 +191,7 @@ def test_http_assets_errors_and_results(tmp_path):
             assert 'href="/"' in presentation
         with urlopen(Request(base + "/api/simulate", data=b"{}")) as response:
             result = json.load(response)
-            assert result["lead_time_s"] == pytest.approx(0.3)
+            assert result["lead_time_s"] == pytest.approx(1.0)
         for path, body, status in [
             ("/api/simulate", b'{"gap_d":0}', 400),
             ("/api/simulate", b'{"gap_d":NaN}', 400),
@@ -250,5 +250,5 @@ def test_demo_keeps_braking_inside_hysteresis_band():
                 state = "cruise"
             assert action == state
     reactive = result["systems"]["reactive"]
-    assert 2 <= reactive["ttc"][24] <= 3
-    assert reactive["action"][24] == "brake"
+    assert 2 <= reactive["ttc"][26] <= 3
+    assert reactive["action"][26] == "brake"

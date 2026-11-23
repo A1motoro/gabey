@@ -25,14 +25,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 8.856110324926194,
+        "min_dist_until_contact": 8.856110324926194,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 8.856110324926194,
+        "min_dist_until_contact": 8.856110324926194,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -46,14 +50,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.264683012764445,
+        "min_dist_until_contact": 10.264683012764445,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.264683012764445,
+        "min_dist_until_contact": 10.264683012764445,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -67,14 +75,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 24.872693379848116,
+        "min_dist_until_contact": 24.872693379848116,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 24.872693379848116,
+        "min_dist_until_contact": 24.872693379848116,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -88,14 +100,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 13.897318502840928,
+        "min_dist_until_contact": 13.897318502840928,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 13.897318502840928,
+        "min_dist_until_contact": 13.897318502840928,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -109,14 +125,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.038993773073662,
+        "min_dist_until_contact": 12.038993773073662,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.038993773073662,
+        "min_dist_until_contact": 12.038993773073662,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -130,14 +150,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.979798875543555,
+        "min_dist_until_contact": 9.979798875543555,
         "brake_onset_t": 4.800000000000001,
         "false_brake": true,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.979798875543555,
+        "min_dist_until_contact": 9.979798875543555,
         "brake_onset_t": 4.800000000000001,
         "false_brake": true,
         "benign": true
@@ -151,14 +175,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 16.578632337587806,
+        "min_dist_until_contact": 16.578632337587806,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 16.578632337587806,
+        "min_dist_until_contact": 16.578632337587806,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -172,14 +200,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 8.173707172230632,
+        "min_dist_until_contact": 8.173707172230632,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 8.173707172230632,
+        "min_dist_until_contact": 8.173707172230632,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -193,14 +225,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.567016280143967,
+        "min_dist_until_contact": 9.567016280143967,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.567016280143967,
+        "min_dist_until_contact": 9.567016280143967,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -214,14 +250,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.182490570254087,
+        "min_dist_until_contact": 12.182490570254087,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.182490570254087,
+        "min_dist_until_contact": 12.182490570254087,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -235,14 +275,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.102371248533334,
+        "min_dist_until_contact": 12.102371248533334,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.102371248533334,
+        "min_dist_until_contact": 12.102371248533334,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -256,14 +300,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.902468847054687,
+        "min_dist_until_contact": 9.902468847054687,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.902468847054687,
+        "min_dist_until_contact": 9.902468847054687,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -277,14 +325,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.50066600494124,
+        "min_dist_until_contact": 10.50066600494124,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.50066600494124,
+        "min_dist_until_contact": 10.50066600494124,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -298,14 +350,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.769932695581648,
+        "min_dist_until_contact": 12.769932695581648,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 12.769932695581648,
+        "min_dist_until_contact": 12.769932695581648,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -319,14 +375,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 17.669793853437998,
+        "min_dist_until_contact": 17.669793853437998,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 17.669793853437998,
+        "min_dist_until_contact": 17.669793853437998,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -340,14 +400,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 19.032872675671015,
+        "min_dist_until_contact": 19.032872675671015,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 19.032872675671015,
+        "min_dist_until_contact": 19.032872675671015,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -361,14 +425,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 6.329985739563413,
+        "min_dist_until_contact": 6.329985739563413,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 6.329985739563413,
+        "min_dist_until_contact": 6.329985739563413,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -382,14 +450,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.623579561518214,
+        "min_dist_until_contact": 10.623579561518214,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.623579561518214,
+        "min_dist_until_contact": 10.623579561518214,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -403,14 +475,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 14.549377434270687,
+        "min_dist_until_contact": 14.549377434270687,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 14.549377434270687,
+        "min_dist_until_contact": 14.549377434270687,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -424,14 +500,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.1178923410364816,
+        "min_dist_until_contact": 3.1178923410364816,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.1178923410364816,
+        "min_dist_until_contact": 3.1178923410364816,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -445,14 +525,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 4.3741961377638185,
+        "min_dist_until_contact": 4.3741961377638185,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 4.3741961377638185,
+        "min_dist_until_contact": 4.3741961377638185,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -466,14 +550,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 20.964318062634305,
+        "min_dist_until_contact": 20.964318062634305,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 20.964318062634305,
+        "min_dist_until_contact": 20.964318062634305,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -487,14 +575,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 14.593183196117876,
+        "min_dist_until_contact": 14.593183196117876,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 14.593183196117876,
+        "min_dist_until_contact": 14.593183196117876,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -508,14 +600,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 16.487279283823494,
+        "min_dist_until_contact": 16.487279283823494,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 16.487279283823494,
+        "min_dist_until_contact": 16.487279283823494,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -529,14 +625,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.4140293386717198,
+        "min_dist_until_contact": 3.4140293386717198,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.4140293386717198,
+        "min_dist_until_contact": 3.4140293386717198,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -550,14 +650,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.625816945757986,
+        "min_dist_until_contact": 3.625816945757986,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.625816945757986,
+        "min_dist_until_contact": 3.625816945757986,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -571,14 +675,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 15.804510233557476,
+        "min_dist_until_contact": 15.804510233557476,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 15.804510233557476,
+        "min_dist_until_contact": 15.804510233557476,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -592,14 +700,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 36.804257013910046,
+        "min_dist_until_contact": 36.804257013910046,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 36.804257013910046,
+        "min_dist_until_contact": 36.804257013910046,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -613,14 +725,18 @@
       "benign": false,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 4.881583925971151,
+        "min_dist_until_contact": 4.881583925971151,
         "brake_onset_t": 3.2,
         "false_brake": false,
         "benign": false
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 4.881583925971095,
+        "min_dist_until_contact": 4.881583925971095,
         "brake_onset_t": 2.9000000000000004,
         "false_brake": false,
         "benign": false
@@ -634,14 +750,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 30.24149097950036,
+        "min_dist_until_contact": 30.24149097950036,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 30.24149097950036,
+        "min_dist_until_contact": 30.24149097950036,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -655,14 +775,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 23.477516190308755,
+        "min_dist_until_contact": 23.477516190308755,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 23.477516190308755,
+        "min_dist_until_contact": 23.477516190308755,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -676,14 +800,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.5495732919155945,
+        "min_dist_until_contact": 3.5495732919155945,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 3.5495732919155945,
+        "min_dist_until_contact": 3.5495732919155945,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -697,14 +825,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 11.360787901103027,
+        "min_dist_until_contact": 11.360787901103027,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 11.360787901103027,
+        "min_dist_until_contact": 11.360787901103027,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -718,14 +850,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.247012094022361,
+        "min_dist_until_contact": 10.247012094022361,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 10.247012094022361,
+        "min_dist_until_contact": 10.247012094022361,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -739,14 +875,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 20.823412855971547,
+        "min_dist_until_contact": 20.823412855971547,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 20.823412855971547,
+        "min_dist_until_contact": 20.823412855971547,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -760,14 +900,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.45520653346755,
+        "min_dist_until_contact": 9.45520653346755,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 9.45520653346755,
+        "min_dist_until_contact": 9.45520653346755,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -781,14 +925,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 5.039310569009186,
+        "min_dist_until_contact": 5.039310569009186,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 5.039310569009186,
+        "min_dist_until_contact": 5.039310569009186,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -802,14 +950,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 22.832589124737027,
+        "min_dist_until_contact": 22.832589124737027,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 22.832589124737027,
+        "min_dist_until_contact": 22.832589124737027,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -823,14 +975,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 11.214990924450836,
+        "min_dist_until_contact": 11.214990924450836,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 11.214990924450836,
+        "min_dist_until_contact": 11.214990924450836,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
@@ -844,14 +1000,18 @@
       "benign": true,
       "reactive": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 30.805362909751125,
+        "min_dist_until_contact": 30.805362909751125,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true
       },
       "cv": {
         "collision": false,
+        "first_collision_t": null,
         "min_dist": 30.805362909751125,
+        "min_dist_until_contact": 30.805362909751125,
         "brake_onset_t": null,
         "false_brake": false,
         "benign": true

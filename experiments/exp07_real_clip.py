@@ -81,7 +81,7 @@ def timeline_figure(scenario, logs, metrics, path):
         if onset is not None:
             for ax in axes:
                 ax.axvline(onset, color=line[0].get_color(), linestyle="--", alpha=0.45)
-    no_brake = run_sim(scenario, NullAssessor(), NeverBrakePolicy(), duration=6)
+    no_brake = run_sim(scenario, NullAssessor(), NeverBrakePolicy(), duration=6, r_safe=2.5)
     no_brake_dist = np.linalg.norm(xy - np.column_stack((no_brake.ego_x, no_brake.ego_y)), axis=1)
     axes[2].plot(
         no_brake.t, no_brake_dist, color="grey", ls="--", label="never brake (counterfactual)"
@@ -151,7 +151,7 @@ def synth_figure(scenarios, path):
         for rel in grid["rel_v"]:
             # Canonical lc_T=3 s, cut_in_t=.5 s: one synthetic slice, not exp03 boundaries.
             scenario = make_scenario("cut_in", gap_d=gap, rel_v=rel, lc_T=3, cut_in_t=0.5)
-            benign = is_benign(scenario, duration=scenario.params["duration"])
+            benign = is_benign(scenario, duration=scenario.params["duration"], r_safe=2.5)
             label = "synthetic benign" if benign else "synthetic dangerous"
             ax.scatter(
                 rel,
@@ -220,8 +220,15 @@ def main(args):
         if name not in SYSTEMS:
             unavailable[name] = "not registered in this checkout"
             continue
+        if name == "oracle" and any(
+            agent.t[-1] < scenario.params["duration"] + 3 - 1e-9
+            for _, scenario in clips
+            for agent in scenario.agents
+        ):
+            unavailable[name] = "frozen truth does not cover the full simulation plus 3 s horizon"
+            continue
         try:
-            run_sim(clips[0][1], make_system(name), HysteresisPolicy(), duration=6)
+            run_sim(clips[0][1], make_system(name), HysteresisPolicy(), duration=6, r_safe=2.5)
         except NotImplementedError as exc:
             unavailable[name] = str(exc)
         else:
@@ -233,10 +240,12 @@ def main(args):
     for _clip_path, scenario in clips:
         p = scenario.params
         cohort = p.get("cohort", "primary")
-        benign = is_benign(scenario, duration=p["duration"])
+        benign = is_benign(scenario, duration=p["duration"], r_safe=2.5)
         metrics, logs, error_3s = {}, {}, {}
         for name in available:
-            log = run_sim(scenario, make_system(name), HysteresisPolicy(), duration=p["duration"])
+            log = run_sim(
+                scenario, make_system(name), HysteresisPolicy(), duration=p["duration"], r_safe=2.5
+            )
             logs[name] = log
             metrics[name] = evaluate(log, benign)
             predictor = getattr(make_system(name), "predictor", None)
@@ -326,6 +335,7 @@ def main(args):
         "unavailable_systems": unavailable,
         "simulation": {
             "duration_s": 6,
+            "collision_model": "legacy_circle",
             "horizon_s": 3,
             "dt_s": 0.1,
             "latency_s": 0,
@@ -385,5 +395,5 @@ if __name__ == "__main__":
     parser.add_argument("--fixtures", type=Path, default=ROOT / "tests/fixtures")
     parser.add_argument("--figure-dir", type=Path, default=ROOT / "outputs/figures")
     parser.add_argument("--log-dir", type=Path, default=ROOT / "outputs/logs")
-    parser.add_argument("--systems", nargs="+", default=["reactive", "cv", "ca", "oracle", "gru"])
+    parser.add_argument("--systems", nargs="+", default=["reactive", "cv"])
     main(parser.parse_args())

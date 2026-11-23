@@ -19,6 +19,7 @@ from l1_fixtures import cut_in_fixture, straight_track
 from pbs.eval.counterfactual import is_benign
 from pbs.eval.metrics import ade, evaluate, fde
 from pbs.prediction import ConstantVelocityPredictor
+from pbs.sim.collision import R_SAFE
 from pbs.sim.policy import TTCThresholdPolicy
 from pbs.sim.simulator import run_sim
 from pbs.systems import make_system
@@ -67,10 +68,12 @@ def main(output_dir: Path) -> dict:
     fig.savefig(output_dir / "cv_ade_fde.png", dpi=150)
     plt.close(fig)
 
-    benign = is_benign(scenario, duration=6.0)
+    benign = is_benign(scenario, duration=6.0, r_safe=R_SAFE)
     summaries, logs = {}, {}
     for name in ("reactive", "cv"):
-        log = run_sim(scenario, make_system(name), TTCThresholdPolicy(), duration=6.0)
+        log = run_sim(
+            scenario, make_system(name), TTCThresholdPolicy(), duration=6.0, r_safe=R_SAFE
+        )
         logs[name] = log
         summaries[name] = evaluate(log, benign)
         pd.DataFrame(
@@ -92,7 +95,7 @@ def main(output_dir: Path) -> dict:
         "dt_s": scenario.dt,
         "horizon_s": 3.0,
         "ttc_threshold_s": 2.0,
-        "r_safe_m": 2.5,
+        "r_safe_m": R_SAFE,
         "systems": summaries,
         "cv_lead_time_s": lead_time,
         "claim": "Fixture-specific demonstration; no traffic-wide safety conclusion.",

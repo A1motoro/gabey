@@ -74,11 +74,11 @@ def test_real_fixture_contract_and_provenance(path):
 @pytest.mark.parametrize("path", CLIPS, ids=lambda p: p.stem)
 def test_real_fixtures_pass_simulator_and_control_counterfactual(path):
     scenario = load_clip(path)
-    log = run_sim(scenario, NullAssessor(), NeverBrakePolicy(), duration=6)
+    log = run_sim(scenario, NullAssessor(), NeverBrakePolicy(), duration=6, r_safe=2.5)
     assert len(log.t) == 61 and log.executed_steps == 60
     assert all(action == "cruise" for action in log.action)
     if scenario.params["group"] == "control":
-        assert is_benign(scenario, duration=6)
+        assert is_benign(scenario, duration=6, r_safe=2.5)
     # Geometric cut-in does NOT imply a collision; never assert fabricated danger.
 
 
@@ -322,11 +322,12 @@ def test_illustrative_cases_preserve_real_danger_and_false_brake(item):
     assert scenario.params["cohort"] == "illustrative"
     assert "excluded from primary" in scenario.params["selection"]
     assert len(scenario.agents[0].t) == 81
-    benign = is_benign(scenario, duration=6)
+    benign = is_benign(scenario, duration=6, r_safe=2.5)
     outcomes = {}
     for system in ("reactive", "cv"):
         outcomes[system] = evaluate(
-            run_sim(scenario, make_system(system), HysteresisPolicy(), duration=6), benign
+            run_sim(scenario, make_system(system), HysteresisPolicy(), duration=6, r_safe=2.5),
+            benign,
         )
         assert not outcomes[system]["collision"]
     if item["case_role"] == "dangerous":

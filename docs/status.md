@@ -7,15 +7,16 @@
 8 分片 / 2321 条记录 → 40 个切入目标窗口、435 个对照窗口；首批 5+5 都 benign，均无刹车。
 完整切入审计中 1 dangerous / 39 benign（39 个场景）；真实危险说明案例 CV 2.9 s、Reactive 3.2 s，
 均避免碰撞；另有两者均误刹的说明案例。说明案例不进入首批统计。
-**CA / Oracle 未实现，GRU 未注册，不能把本次交付说成四系统或学习模型评测完成。**
+**已合入最新 main 的 CA/CTRV/LR/Oracle、D 的 L2 评测与 OBB 基线。**
+L3 默认实验仍比较 Reactive/CV，并显式使用圆形兼容参数；CA 可选、Oracle 真值未来不足跳过、GRU 未注册。
 
 复现：`python experiments/exp07_real_clip.py`；报告和限制见
 [L3_waymo_case_study.md](L3_waymo_case_study.md)，给 P 的输入契约与 A 的答辩说明见
 [L3_A_handoff.md](L3_A_handoff.md)。原始分片继续被 ignore；小型 `exp07` 图表已允许纳入代码包。
 此前 demo 测试的 Windows 路径、端口预留与子进程编码问题已在测试侧修正。
 
-最终本机验收：**266 passed / 2 skipped**（18.33 s）；新增 L3 39 项测试通过，
-Ruff（src/tests 与新增脚本）通过，项目外目录复现通过。
+初次交付验收：266 passed / 2 skipped。PR #16 合入 main 后最新验收：**389 passed**（38.60 s），
+Ruff（src/tests 与新增脚本）通过；L3 冻结案例与可选 CA 接入复现通过。
 
 ---
 

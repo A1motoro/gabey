@@ -11,7 +11,8 @@
 > **2026-11-23 实现更新**：A 的真实数据适配、首批 5+5、全候选审计、两个说明案例、三图与测试已完成。
 > 实际结果见 [L3_waymo_case_study.md](L3_waymo_case_study.md)，实际命令见 README。
 > 本手册旧骨架有三项纠正：SDC 用 `sdc_track_index`，时间戳有微小时钟抖动，几何切入不等于 dangerous。
-> 原定四系统中的 CA/Oracle 和 GRU 仍待 P；本次仅报告实际已实现的 Reactive/CV。
+> 合入最新 main 后 CA/CTRV/LR/Oracle 已实现。冻结 exp07 默认仅 Reactive/CV；CA 可选，
+> Oracle 因有效未来不足而跳过，GRU 未注册。exp07 显式 `r_safe=2.5`，与 L2 默认矩形配置分开。
 
 ---
 
@@ -748,7 +749,7 @@ outputs/logs/exp07_real_control.csv
 [x] Step 7  Scenario 通过 _validate（run_sim 不抛异常）
 [x] Step 8  12 个 npz 各 < 200 KB，落在 tests/fixtures/，含两份说明案例
 [x] Step 9  Reactive/CV 跑完；完整审计 40 切入中 1 dangerous / 39 benign
-[ ] Step 9b CA/Oracle/GRU 待 P 实现并接入；不属于 A 的数据交付未完成项
+[x] Step 9b CA 可选接入已验证；Oracle 未来覆盖不足明确跳过，GRU 未注册
 [x] Step 10 三张主图 + 两组表 + 说明案例表 / ADE / 逐帧日志
 [x] Step 11 NPZ 单测全绿；自动测试禁止 protobuf 与原始数据访问时仍能读快照
 [x] Step 12 case study 文档 + README/interfaces/contributions/references 同步

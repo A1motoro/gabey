@@ -1,6 +1,7 @@
 # A 的 L3：交接与答辩速查
 
-A 完成的是 **M1 真实数据适配和验证证据**。L2 主实验、CA/Oracle/GRU 的实现仍由相应负责人完成。
+A 完成的是 **M1 真实数据适配和验证证据**。L2 主实验、CA/CTRV/LR/Oracle 已随最新 main 合入。
+本实验保留圆形兼容配置；GRU 与 Oracle 所需的更长有效未来窗口仍需后续接入。
 结果与英文报告段落见 [L3_waymo_case_study.md](L3_waymo_case_study.md)。
 
 ## 你需要会讲的五件事
@@ -40,7 +41,7 @@ from pbs.sim.policy import HysteresisPolicy
 from pbs.systems import make_system
 
 sc = load_clip("tests/fixtures/cases/womd_dangerous_6e86a639df5d4fa1_track1782.npz")
-log = run_sim(sc, make_system("cv"), HysteresisPolicy(), duration=sc.params["duration"])
+log = run_sim(sc, make_system("cv"), HysteresisPolicy(), duration=sc.params["duration"], r_safe=2.5)
 ```
 
 - `Scenario.kind` 为 `real_cut_in` 或 `real_control`；这些类型不进入 `KINDS` 或合成 96 场景的分母。
@@ -52,7 +53,8 @@ log = run_sim(sc, make_system("cv"), HysteresisPolicy(), duration=sc.params["dur
 - Oracle 若接入，需说明 t>3 时完整 3 s 预测会超出冻结的 t=6 真值；不得把端点保持当成真实未来。
   它应明确截断评测、扩展有效真值或采用团队约定，不能静默补未来。
 - 新系统注册并实现后，用 `python experiments/exp07_real_clip.py --systems reactive cv ca oracle gru`
-  重新运行；脚本只对明确 `NotImplementedError`/未注册项记 unavailable，其他错误直接失败。
+  重新运行；默认仅 Reactive/CV，显式选 CA 时可以运行。
+  Oracle 真值覆盖不足、明确 `NotImplementedError` 和未注册项记 unavailable，其他错误直接失败。
 
 ## A 的验收入口
 

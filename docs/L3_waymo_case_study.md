@@ -2,7 +2,9 @@
 
 已完成 Waymo 原始读取、几何筛选、真实快照、Reactive/CV 回放、预测误差与报告图。
 真实危险说明案例中，CV 比 Reactive 提前 **0.3 s** 刹车；这是一个案例的结果。
-完整筛选还发现误刹，不能只展示成功案例。CA / Oracle 尚未实现、GRU 尚未注册，属于 P 的后续接入项。
+完整筛选还发现误刹，不能只展示成功案例。本实验默认保留 Reactive/CV 对比。
+合入最新 main 后，CA/CTRV/LR/Oracle 已实现；CA 等模型可用 `--systems` 加入，
+Oracle 因冻结真值未覆盖完整仿真和预测时域而跳过，GRU 尚未注册。
 
 ## 数据和筛选
 
@@ -30,9 +32,11 @@
 
 ## 已测结果
 
-统一参数：6 s 仿真、3 s 预测、`dt=0.1`、`r_safe=2.5 m`、延迟 0、
+统一参数：显式圆形兼容配置 `r_safe=2.5 m`，6 s 仿真、3 s 预测、`dt=0.1`、延迟 0、
 `HysteresisPolicy(t_on=2, t_off=3, a_brake=6)`。
 ego 从 anchor 附近三帧的平均速度开始，沿直线自主仿真；只回放选中的单个目标。
+main 的 L2 默认值已升级为定向矩形 + Swept TTC。本实验与审计、测试均显式传入 `r_safe=2.5`，
+避免默认参数变更改写冻结证据；这些数字不是 L2 矩形配置的评测结果。
 
 | 集合 / 说明案例 | 永不刹车 | Reactive 首次刹车 | CV 首次刹车 | 结论 |
 | --- | --- | --- | --- | --- |
@@ -95,11 +99,15 @@ python experiments/exp07_real_clip.py
 只有维护者重新编译它才需要 `grpcio-tools` 和网络，常规运行不需要 TensorFlow。
 API 和给 P 的输入契约见 [interfaces.md](interfaces.md)；A 的讲解要点见 [L3_A_handoff.md](L3_A_handoff.md)。
 
-2026-11-23 本机验收：`pytest -q -p no:cacheprovider` 为 **266 passed / 2 skipped**（18.33 s），
+2026-11-23 初次交付（`e1fa151`）本机验收：`pytest -q -p no:cacheprovider` 为 **266 passed / 2 skipped**（18.33 s），
 两个 skip 是既有 CTRV/Oracle 未实现项；新增 L3 测试 **39 项**（38 项快照/适配测试 + 1 项可选 CRC 测试）。
 `ruff check src tests` 和新增脚本检查通过，`git diff --check` 通过，三张图已视觉核验。
 另在项目外临时目录运行 exp07，逐行 CSV/JSON 与默认产物一致；
 NPZ 测试还明确阻断了 protobuf 导入和原始 Waymo 文件访问。
+
+合入 main（`a3f91cb`）后的 PR #16 集成验收：**389 passed**（38.60 s），无跳过；
+Ruff 检查通过。默认 exp07 重跑保持两份说明案例时刻一致；可选 CA 接入通过，
+Oracle 的未来真值覆盖检查阻止把端点保持当成真实未来。
 
 ## 可直接放进英文报告的段落
 
@@ -107,7 +115,7 @@ NPZ 测试还明确阻断了 protobuf 导入和原始 Waymo 文件访问。
 > contained 2,321 records; our conservative clock and straight-road filters yielded 40 cut-in
 > target windows and 435 adjacent-lane control windows. The first five distinct scenes per group,
 > selected without consulting system outcomes, produced no collision or braking in six-second
-> replay. On these clips, CV achieved mean 3-second ADE/FDE of 1.057/2.677 m for cut-ins and
+> replay with the explicitly selected historical 2.5 m circle-contact model. On these clips, CV achieved mean 3-second ADE/FDE of 1.057/2.677 m for cut-ins and
 > 1.055/2.881 m for controls. We additionally audited all 40 cut-in windows from 39 scenes and
 > explicitly selected two illustrative cases. In the single dangerous replay, CV initiated braking
 > at 2.9 s and Reactive at 3.2 s; both avoided contact. In a benign replay both braked at 4.8 s,
@@ -115,7 +123,8 @@ NPZ 测试还明确阻断了 protobuf 导入和原始 Waymo 文件访问。
 > excluded from primary-cohort statistics. Agents are replayed without responding to the ego,
 > the ego follows a straight-path surrogate, and only the selected target is simulated. The
 > evidence demonstrates interface transfer and case-specific behavior, not population-level
-> safety gains, statistical significance, or validation of learned predictors.
+> safety gains, statistical significance, or validation of learned predictors. These results
+> retain the historical circle configuration and are separate from the main L2 OBB baseline.
 
 引用：Scott Ettinger et al., *Large Scale Interactive Motion Forecasting for Autonomous Driving:
 The Waymo Open Motion Dataset*, 2021，核实入口 [arXiv:2104.10133](https://arxiv.org/abs/2104.10133)。

@@ -129,3 +129,65 @@ def test_predictive_aligns_delayed_observations(age):
 def test_predictive_rejects_future_observations():
     with pytest.raises(ValueError, match="newer"):
         PredictiveAssessor(ConstantVelocityPredictor()).assess(context(), history(t_last=1.0))
+
+
+def test_assess_risk_swept_catches_substep_crossing():
+    # Ego holds at (0, 0) heading +x; fast perpendicular agent jumps from y=-6 to y=+6 in dt=0.1s.
+    # At both discrete endpoints |y|=6 > 2.5+1.25, so discrete check misses it,
+    # whereas swept check catches contact around y=-3.75 (fraction = (6 - 3.75) / 12).
+    ego_origin = np.array([0.0, 0.0])
+    agent_origin = np.array([0.0, -6.0])
+    ego_future = np.array([[0.0, 0.0], [0.0, 0.0]])
+    agent_future = np.array([[0.0, 6.0], [0.0, 18.0]])
+    discrete = assess_risk(
+        ego_future,
+        agent_future,
+        dt=0.1,
+        ego_heading=0.0,
+        agent_heading=np.pi / 2,
+        swept=False,
+    )
+    swept = assess_risk(
+        ego_future,
+        agent_future,
+        dt=0.1,
+        ego_heading=0.0,
+        agent_heading=np.pi / 2,
+        ego_origin=ego_origin,
+        agent_origin=agent_origin,
+        ego_origin_heading=0.0,
+        agent_origin_heading=np.pi / 2,
+        swept=True,
+    )
+    assert np.isinf(discrete.ttc)
+    assert swept.conflict_step == 0
+    assert swept.ttc == pytest.approx(0.1 * (6.0 - 3.75) / 12.0, abs=1e-6)
+
+
+def test_predictive_assessor_l2_uses_swept_ttc():
+    # In L2 OBB mode (r_safe=None), PredictiveAssessor sweeps each forecast interval.
+    ctx = context(ego_v=0.0, horizon=5, dt=0.1)
+    ctx.r_safe = None
+    ctx.ego_future_heading = np.zeros(5)
+    # Moving at vy=120 m/s crosses ego at y=0 in the middle of step 0 without overlapping endpoints.
+    cutter = history(x=0.0, y=-6.0, vx=0.0, vy=120.0, t_last=0.0)
+    est = PredictiveAssessor(ConstantVelocityPredictor()).assess(ctx, cutter)
+    assert est.conflict_step == 0
+    assert est.ttc == pytest.approx(0.1 * (6.0 - 3.75) / 12.0, abs=1e-6)
+
+
+def test_predictive_assessor_l1_circle_stays_discrete():
+    # Explicit r_safe selects the legacy L1 discrete circle check (no substep sweep).
+    ctx = context(ego_v=0.0, horizon=5, dt=0.1)
+    ctx.r_safe = 2.5
+    cutter = history(x=0.0, y=-6.0, vx=0.0, vy=120.0, t_last=0.0)
+    est = PredictiveAssessor(ConstantVelocityPredictor()).assess(ctx, cutter)
+    assert np.isinf(est.ttc)
+    assert est.conflict_step is None
+
+
+def test_assess_risk_swept_requires_origins():
+    ego = np.array([[0.0, 0.0], [1.0, 0.0]])
+    agent = np.array([[0.0, 5.0], [0.0, 4.0]])
+    with pytest.raises(ValueError, match="ego_origin and agent_origin"):
+        assess_risk(ego, agent, dt=0.1, swept=True)

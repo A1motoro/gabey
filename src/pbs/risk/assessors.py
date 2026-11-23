@@ -16,6 +16,7 @@ import numpy as np
 
 from pbs.prediction._motion import last_velocity, prediction_inputs
 from pbs.prediction.base import Predictor
+from pbs.sim.collision import HALF_LENGTH, HALF_WIDTH, PEDESTRIAN_RADIUS
 from pbs.types import RiskContext, RiskEstimate, Scenario, Trajectory
 
 
@@ -47,7 +48,7 @@ class ReactiveAssessor(RiskAssessor):
         t, xy, _ = prediction_inputs(history, 0, ctx.dt)
         if not np.isfinite(ctx.lane_width) or ctx.lane_width <= 0:
             raise ValueError("lane_width must be finite and positive")
-        if not np.isfinite(ctx.r_safe) or ctx.r_safe < 0:
+        if ctx.r_safe is not None and (not np.isfinite(ctx.r_safe) or ctx.r_safe < 0):
             raise ValueError("r_safe must be finite and non-negative")
         agent_s, offset, tangent = _path_projection(ctx.ego_path, xy[-1])
         if offset > ctx.lane_width / 2:
@@ -56,7 +57,18 @@ class ReactiveAssessor(RiskAssessor):
         gap = agent_s - ego_s
         if gap < 0:
             return RiskEstimate()
-        remaining = gap - ctx.r_safe
+        extent = ctx.r_safe
+        if extent is None:
+            # Reactive still ignores lateral motion once the agent is in lane.
+            relative_heading = history.heading[-1] - np.arctan2(tangent[1], tangent[0])
+            agent_extent = (
+                PEDESTRIAN_RADIUS
+                if history.agent_type == "pedestrian"
+                else HALF_LENGTH * abs(np.cos(relative_heading))
+                + HALF_WIDTH * abs(np.sin(relative_heading))
+            )
+            extent = HALF_LENGTH + agent_extent
+        remaining = gap - extent
         if remaining < 0:
             return RiskEstimate(ttc=0.0)
         closing = ctx.ego_v - float(last_velocity(history, t, xy) @ tangent)
@@ -111,7 +123,7 @@ class PredictiveAssessor(RiskAssessor):
         self.predictor.bind(scenario)
 
     def assess(self, ctx: RiskContext, history: Trajectory) -> RiskEstimate:
-        from pbs.risk.ttc import assess_risk
+        from pbs.risk.ttc import assess_risk, forecast_headings
 
         # Predictors are anchored to observation time; align stale observations to t_now.
         prediction_inputs(history, ctx.horizon, ctx.dt)
@@ -132,4 +144,27 @@ class PredictiveAssessor(RiskAssessor):
             )
         else:
             agent_future = forecast
-        return assess_risk(ctx.ego_future, agent_future, ctx.dt, ctx.r_safe)
+        if ctx.r_safe is not None:
+            return assess_risk(ctx.ego_future, agent_future, ctx.dt, ctx.r_safe)
+        angles = forecast_headings(forecast, [history.x[-1], history.y[-1]], history.heading[-1])
+        if extra:
+            unwrapped = np.unwrap(np.r_[history.heading[-1], angles])
+            agent_now = np.array([np.interp(age, times, xy[:, 0]), np.interp(age, times, xy[:, 1])])
+            agent_now_heading = float(np.interp(age, times, unwrapped))
+            angles = np.interp(query, times, unwrapped)
+        else:
+            agent_now = np.array([history.x[-1], history.y[-1]], dtype=float)
+            agent_now_heading = float(history.heading[-1])
+        return assess_risk(
+            ctx.ego_future,
+            agent_future,
+            ctx.dt,
+            ego_heading=ctx.ego_future_heading,
+            agent_heading=angles,
+            pedestrian=history.agent_type == "pedestrian",
+            ego_origin=ctx.ego_xy,
+            agent_origin=agent_now,
+            ego_origin_heading=ctx.ego_heading,
+            agent_origin_heading=agent_now_heading,
+            swept=True,
+        )
