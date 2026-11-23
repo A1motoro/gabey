@@ -1,262 +1,273 @@
-# Experimental Results — D's M3 Deliverable
+# Experimental results and limitations (D, M3 draft)
 
-> **Date**: 2026-11-23  
-> **Baseline**: L2 (OBB geometry, hysteresis policy, swept TTC)  
-> **Config**: Quick mode (5×5 boundary grid, 110 tradeoff scenarios, 2 thresholds)  
-> **Owner**: D (yj)
+> Owner: D (yj). Draft of the report's "实验结果 / 局限" section required by
+> [d-baseline.md](d-baseline.md) §7 (M3): each conclusion is written as
+> claim → evidence (figure) → limitation. Figure numbers follow d-baseline §5:
+> **F2** = exp05, **F3** = exp02, **F4** = exp03. F5 (exp04, latency) was not run.
+
+## What was run
+
+| Item | Value |
+| --- | --- |
+| Mode | `--quick` only. No full-resolution run and no `--legacy-l1` run is reported here |
+| Configuration | L2 baseline ([l2-baseline.md](l2-baseline.md)): 5.0 m × 2.5 m oriented rectangles (`r_safe=None`), `HysteresisPolicy(t_on, t_on + 1.0, a_brake=6.0)`, 4 s horizon (40 steps), 15 s scored simulation on 19 s logs, `latency = 0.0` in every row |
+| Code | Experiment code is that of `main` at `a3f91cb`. Run on 2026-11-23 at `a3f91cb`, rerun at `3d34fe2` (a docs-only commit): CSVs identical except the `git_rev` column, summaries identical |
+| Environment | Python 3.12.3, NumPy 2.5.5, pandas 3.1.1, Matplotlib 3.11.2, Linux |
+| Outputs | `outputs/figures/` and `outputs/logs/` are gitignored. Regenerate them with [reproducibility.md](reproducibility.md) |
+
+Every rate below is given with its count and denominator. The scenarios are deterministic
+points on parameter grids, not samples from a traffic distribution, so no confidence
+intervals are reported and none should be inferred.
+
+## Read first: `benign` is defined on a 15 s window
+
+A scenario is benign when the never-braking ego has no contact within the 15 s scored
+simulation ([scenarios.md](scenarios.md) §10 item 5; open question Q2 in d-baseline §6).
+D's logs are 4 s longer so that Oracle can look past the last scored frame. Re-running the
+never-brake case over the whole 19 s log (`experiments/check_label_window.py`) shows:
+
+| Set | Scenarios | Benign at 15 s | Of those, contact between 15 s and 19 s |
+| --- | ---: | ---: | ---: |
+| exp02 trade-off set | 110 | 53 | **6** |
+| exp03 / exp05 quick grid | 25 | 11 | 0 |
+| exp03 / exp05 full grid (not run as an experiment) | 255 | 101 | 6 |
+
+The six exp02 scenarios:
+
+| Scenario | First contact, never-brake [s] | Systems that brake within 15 s |
+| --- | ---: | --- |
+| `cut_in` gap_d 20, rel_v 1, lc_T 3 | 15.00 | all four, onset 13.1 s at t_on = 2.0 s |
+| `cut_in` gap_d 20, rel_v 1, lc_T 4 | 15.00 | all four, onset 13.1 s |
+| `lead_brake` init_gap 35, decel 0.3 | 15.14 | all four, onset 13.2–13.3 s |
+| `cut_in` gap_d 40, rel_v 2, lc_T 3 | 17.50 | none |
+| `cut_in` gap_d 40, rel_v 2, lc_T 4 | 17.50 | none |
+| `lead_brake` init_gap 50, decel 0.3 | 18.32 | none |
+
+Consequence: in the first three, every system brakes about 2 s before a contact that
+happens at or just after the end of the scored window, and each of those brakes is counted
+as a false brake. The F3 section splits the false-brake counts accordingly. The quick
+grid behind F4 and F2 has no such cell, so those numbers are unaffected. No label or
+metric was changed; whether to change the window is a team decision (Q2).
 
 ---
 
-## Overview
+## F3 — exp02: collisions and false brakes on the mixed scenario set
 
-This document presents the experimental results for the three core evaluation experiments (exp02, exp03, exp05) that answer the research question:
-
-> **How much does prediction expand the AEB safety working region, and where does it still fail?**
-
-All experiments use:
-- **Scenarios**: A's parametric synthetic scenarios (quintic lane change, lead brake, crossing)
-- **Systems**: Reactive / CV / CA / Oracle (CORE set)
-- **Simulation**: L2 baseline (OBB 5.0m×2.5m, hysteresis policy, 15s duration, 40-step horizon)
-- **Fairness**: Benign/dangerous labels via counterfactual (NeverBrakePolicy)
-
----
-
-## Experiment 02: Safety–Nuisance Trade-off
+`outputs/figures/exp02_tradeoff.png`, `outputs/logs/exp02.csv` (880 rows = 110 scenarios ×
+4 systems × 2 thresholds), `outputs/logs/exp02_summary.json`. 57 dangerous and 53 benign
+scenarios: A's default grid (96), the CA slice with `a_cutter = ±2` (8) and six aborted
+cut-ins built in `experiments/scenario_sets.py`.
 
 ### Claim
 
-**Each AEB system exhibits a trade-off between collision rate (dangerous scenarios) and false-brake rate (benign scenarios). At comparable false-brake budgets, predictive systems achieve lower collision rates than reactive.**
+At the same threshold (t_on = 2.0 s, t_off = 3.0 s), fewer dangerous scenarios end in a
+collision with prediction than without: Reactive 14, CV 7, CA 4, Oracle 2 of 57.
+This is a same-threshold comparison, not a comparison at equal false-brake rates, and the
+quick run does not show a trade-off curve.
 
 ### Evidence
 
-**Figure**: `outputs/figures/exp02_tradeoff.png`  
-**Data**: `outputs/logs/exp02.csv` (880 runs = 110 scenarios × 4 systems × 2 thresholds)  
-**Summary**: `outputs/logs/exp02_summary.json`
+| System | Collisions, t_on = 1.0 s | Collisions, t_on = 2.0 s | False brakes (same at both thresholds) |
+| --- | ---: | ---: | ---: |
+| Reactive | 27/57 (0.474) | 14/57 (0.246) | 4/53 (0.075) |
+| CV | 24/57 (0.421) | 7/57 (0.123) | 7/53 (0.132) |
+| CA | 23/57 (0.404) | 4/57 (0.070) | 7/53 (0.132) |
+| Oracle | 21/57 (0.368) | 2/57 (0.035) | 3/53 (0.057) |
 
-**Key Results** (threshold = 2.0s, hysteresis off at 3.0s):
+- Each system false-brakes on exactly the same benign scenarios at t_on = 1.0 s and 2.0 s.
+  In the figure each system is therefore a vertical segment: raising the threshold removed
+  collisions without adding a false brake. Two thresholds do not give an operating point
+  at which the systems share a false-brake rate.
+- At t_on = 2.0 s CV has half of Reactive's collisions (7 vs 14) and more false brakes
+  (7 vs 4). CA has the same false brakes as CV and three fewer collisions.
+- Oracle's two remaining collisions are both `crossing` scenarios (gap_d 15, lateral_v 1.5,
+  arrival_t 1.0 and 2.5). CV and CA collide in the same two. Oracle and CV brake from
+  t = 0.0 s there and contact still occurs at 0.92 s and 0.98 s.
 
-| System | Collision Rate | False-Brake Rate | n_dangerous | n_benign |
-|--------|----------------|------------------|-------------|----------|
-| Reactive | 0.246 (14/57) | 0.075 (4/53) | 57 | 53 |
-| CV | 0.123 (7/57) | 0.132 (7/53) | 57 | 53 |
-| CA | 0.070 (4/57) | 0.132 (7/53) | 57 | 53 |
-| Oracle | 0.035 (2/57) | 0.057 (3/53) | 57 | 53 |
+Where the false brakes come from (t_on = 2.0 s; identical at 1.0 s):
 
-**Interpretation**:
-- **CV vs Reactive**: CV cuts collision rate by **50%** (0.123 vs 0.246) with **76% higher false-brake rate** (0.132 vs 0.075)
-- **CA vs CV**: CA further reduces collision rate by **43%** (0.070 vs 0.123) at same false-brake rate (0.132)
-- **Oracle upper bound**: Even perfect prediction still has 3.5% collision rate (2 unsaveable scenarios at t=2.0s threshold)
+| System | False brakes | Late contact (see "Read first") | Aborted cut-ins | Other | On the 47 benign scenarios without late contact |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Reactive | 4 | 3 | 0 | 1 | 1/47 (0.021) |
+| CV | 7 | 3 | 4 | 0 | 4/47 (0.085) |
+| CA | 7 | 3 | 4 | 0 | 4/47 (0.085) |
+| Oracle | 3 | 3 | 0 | 0 | 0/47 |
 
-**Abort Cut-in Analysis**:
-- **With aborts** (6 scenarios): CV/CA false-brake rate = 0.132
-- **Without aborts**: CV/CA false-brake rate = 0.064 (drops by **51%**)
-- Aborts test CV's vulnerability to cut-ins that lean toward ego lane then return
+- All three Oracle false brakes are the late-contact scenarios: Oracle reads the real log
+  and brakes for a contact that exists, just outside the scored window.
+- CV's and CA's other four false brakes are four of the six aborted cut-ins, which were
+  added by D to provoke exactly this. Reactive and Oracle do not brake on any abort.
+- Reactive's one other false brake is a `crossing` scenario (gap_d 50, arrival_t 1.0).
+- `tradeoff_without_aborts` in the summary (Reactive 4/47, CV / CA / Oracle 3/47) still
+  contains the three late-contact scenarios for every system.
 
-**Per-Family Breakdown** (from summary JSON):
+By family at t_on = 2.0 s (Reactive / CV / CA / Oracle):
 
-| Family | n_dangerous | n_benign | Collision Rate @ t=2.0s (R/CV/CA/O) | False-Brake Rate @ t=2.0s (R/CV/CA/O) |
-|--------|-------------|----------|-------------------------------------|--------------------------------------|
-| cut_in | 28 | 32 | 0.250 / 0.143 / 0.071 / 0.000 | 0.062 / 0.062 / 0.062 / 0.062 |
-| lead_brake | 16 | 4 | 0.062 / 0.062 / 0.000 / 0.000 | 0.250 / 0.250 / 0.250 / 0.250 |
-| crossing | 9 | 7 | 0.667 / 0.222 / 0.222 / 0.222 | 0.143 / 0.000 / 0.000 / 0.000 |
-| cut_in_ca | 4 | 4 | 0.000 / 0.000 / 0.000 / 0.000 | 0.000 / 0.000 / 0.000 / 0.000 |
-| cut_in_abort | 0 | 6 | — | 0.000 / 0.667 / 0.667 / 0.000 |
-
-**Observations**:
-- **Cut-in**: CV reduces Reactive's 25% collision rate to 14.3%; CA to 7.1%; Oracle to 0%
-- **Crossing**: Reactive fails 67% (6/9); predictive systems fail 22% (2/9) — lateral extrapolation helps but not enough
-- **Lead brake**: Nearly all systems avoid collision; one Reactive/CV failure each at 6.2%
-- **CA slice**: All systems succeed (comfortable longitudinal acceleration, no edge cases)
-- **Aborts**: Only CV/CA false-brake (67% = 4/6); Reactive and Oracle ignore harmless maneuvers
+| Family | Dangerous | Benign | Collisions | False brakes |
+| --- | ---: | ---: | --- | --- |
+| `cut_in` | 28 | 32 | 7 / 4 / 2 / 0 | 2 / 2 / 2 / 2 (both late contact) |
+| `lead_brake` | 16 | 4 | 1 / 1 / 0 / 0 | 1 / 1 / 1 / 1 (late contact) |
+| `crossing` | 9 | 7 | 6 / 2 / 2 / 2 | 1 / 0 / 0 / 0 |
+| `cut_in_ca` | 4 | 4 | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+| `cut_in_abort` | 0 | 6 | — | 0 / 4 / 4 / 0 |
 
 ### Limitations
 
-1. **Trade-off shape depends on threshold grid**: Only 2 thresholds tested (1.0s, 2.0s); full curve needs denser sweep
-2. **Benign scenarios are synthetic**: Abort cut-ins hand-crafted to test false-brake; real benign distribution unknown
-3. **No perception uncertainty**: Direct trajectory input; real sensors add noise → more false brakes
-4. **No computational delay**: Assumes instant prediction; real systems have 50–200ms latency
-5. **Fixed ego policy**: Log replay agents don't respond to ego braking; real agents might react
+1. Two thresholds only. The six-threshold sweep was not run, so the shape of the
+   collision / false-brake curve and any equal-false-brake comparison are not established.
+2. The false-brake rate is dominated by two constructed effects: the window-end brakes
+   (3 scenarios) and the hand-built aborts (6 scenarios, 4 of which trigger CV and CA).
+   On the remaining 41 benign scenarios the counts are Reactive 1, CV 0, CA 0, Oracle 0.
+   The measured cost of prediction in false brakes therefore rests on the abort family alone.
+3. Family denominators are small (4 to 32). One scenario moves a family rate by 3 to 25
+   percentage points.
+4. `latency = 0.0` throughout. No noise is added to the trajectories the systems observe.
 
 ---
 
-## Experiment 03: Failure Boundary (HEADLINE FIGURE)
+## F4 — exp03: failure boundaries on the cut-in (gap_d, rel_v) grid
+
+`outputs/figures/exp03_boundaries.png`, `outputs/logs/exp03.csv` (200 rows = 25 scenarios ×
+4 systems × 2 thresholds), `outputs/logs/exp03_summary.json`. Grid: gap_d ∈ {8, 14, 22, 32,
+48} m × rel_v ∈ {−4, 0, 4, 8, 12} m/s, `lc_T = 3.0 s`, `a_cutter = 0`.
+14 cells are dangerous and 11 benign. Benign cells are the ten with rel_v ≤ 0 plus
+(gap_d 8, rel_v 12); every other cell with rel_v > 0 is dangerous.
 
 ### Claim
 
-**On the (gap_d, rel_v) plane, CV's safe region is larger than Reactive's, but Oracle's is larger still. The area differences quantify (1) the value of prediction and (2) the cost of prediction error.**
+On this 5 × 5 grid at t_on = 2.0 s, Reactive leaves 6 of the 14 dangerous cells
+collision-free, CV and CA 9, Oracle 12. CV rescues three cells that Reactive does not, and
+Oracle three more that CV does not.
 
 ### Evidence
 
-**Figure**: `outputs/figures/exp03_boundaries.png` (two panels)  
-**Data**: `outputs/logs/exp03.csv` (200 runs = 25 scenarios × 4 systems × 2 thresholds)  
-**Summary**: `outputs/logs/exp03_summary.json`
+| System | Rescue rate, t_on = 2.0 s | Rescue rate, t_on = 1.0 s | Colliding cells (gap_d, rel_v) at t_on = 2.0 s |
+| --- | ---: | ---: | --- |
+| Reactive | 6/14 (0.429) | 5/14 | (8,4) (14,4) (8,8) (14,8) (22,8) (14,12) (22,12) (32,12) |
+| CV | 9/14 (0.643) | 7/14 | (8,4) (8,8) (14,8) (14,12) (22,12) |
+| CA | 9/14 (0.643) | 7/14 | same cells as CV |
+| Oracle | 12/14 (0.857) | 8/14 | (8,8) (14,12) |
 
-**Key Results** (5×5 quick grid, t_on=2.0s):
-
-| System | Rescue Rate | Collisions (out of 14 dangerous) |
-|--------|-------------|----------------------------------|
-| Reactive | 0.429 (6/14 saved) | 8 |
-| CV | 0.643 (9/14 saved) | 5 |
-| CA | 0.643 (9/14 saved) | 5 |
-| Oracle | 0.857 (12/14 saved) | 2 |
-
-**Value of Prediction**: rescue(CV) − rescue(Reactive) = **0.214** (3 additional scenarios saved)  
-**Cost of Prediction Error**: rescue(Oracle) − rescue(CV) = **0.214** (3 more saveable with perfect foresight)
-
-**Interpretation**:
-- CV's lateral extrapolation rescues **3 cut-in scenarios** (21.4% improvement) that Reactive misses
-- CA matches CV on this grid (quintic profile has zero acceleration at endpoints; CA's advantage needs acceleration-rich scenarios)
-- Oracle's perfect foresight rescues **3 more scenarios** that CV's constant-velocity assumption misclassifies
-
-**Stopping Distance Overlay**:
-- Figure includes 1D kinematic limit: $d_{\text{safe}} = 5.0 + v_{\text{rel}}^2 / (2 \times 6.0)$ [m]
-- Physical brake limit (zero delay, full deceleration) forms the **absolute lower bound**
-- All system boundaries stay above this curve (no unphysical braking)
-- Oracle boundary approaches but doesn't violate the kinematic limit
-
-**Grid Coverage**:
-- **14 dangerous** (56%), **11 benign** (44%) out of 25 scenarios
-- Dangerous: low gap_d / high rel_v corner
-- Benign: high gap_d / negative rel_v (ego slower than cutter) corner
+- rescue(CV) − rescue(Reactive) = 3/14 = **0.214**: cells (14,4), (22,8), (32,12).
+- rescue(Oracle) − rescue(CV) = 3/14 = **0.214**: cells (8,4), (14,8), (22,12).
+- The colliding sets are nested: Oracle ⊂ CV = CA ⊂ Reactive.
+- **The two panels are identical on this grid.** The left panel uses, per system, the
+  threshold with the fewest collisions among those with a false-brake rate ≤ 5 %
+  (`rescue.budget`, `value_of_prediction`, `cost_of_prediction_error` in the summary).
+  The right panel fixes t_on = 2.0 s (`rescue.fixed_2s`, `*_fixed_2s`). No system
+  false-brakes on any of the 11 benign cells at either threshold (0/11), so the left
+  panel also selects 2.0 s for all four systems and both key sets hold the same values.
+  A full-resolution run can separate them and must be read from the matching key.
+- The dashed curve is the zero-delay 1D stopping gap d = 5.0 + rel_v² / (2 · 6.0) m.
+  Two dangerous cells lie below it, (8,8) and (14,12), and every system collides in both.
+  Oracle brakes from t = 0.0 s in both and still makes contact at 1.70 s and 1.56 s.
+  Of the 12 dangerous cells above the curve Oracle collides in none, CV and CA in 3,
+  Reactive in 6.
 
 ### Limitations
 
-1. **Coarse grid**: 5×5 quick grid; full 15×17 grid would reveal finer boundary details
-2. **Fixed lane-change duration**: lc_T = 3.0s only; faster lane changes (2.0s) might shift boundaries
-3. **Single conflict type**: Cut-in only; lead_brake and crossing have different boundary shapes
-4. **Rescue rate ignores severity**: A grazing contact and a high-speed collision both count as "not rescued"
-5. **2D point-mass dynamics**: Real vehicles have steering, stability control, and lateral dynamics that could expand the safe region
-6. **Deterministic scenarios**: No stochasticity in agent behavior; real cut-ins have intent uncertainty
+1. 14 dangerous cells: one cell is 0.071 of rescue rate, and both headline differences
+   are three cells. The full 15 × 17 grid was not run.
+2. The contour lines in the figure interpolate between grid points 6 to 16 m and 4 m/s
+   apart. The boundary position is known only to that spacing.
+3. Along gap_d the danger label barely varies on this grid: with a 15 s window the cells
+   with rel_v of 4 and 8 m/s are dangerous at all five gaps, up to 48 m. The benign side
+   is almost entirely rel_v ≤ 0.
+4. One lane-change duration (3.0 s) and one scenario family (cut-in). `a_cutter = 0`, so
+   CA and CV are not distinguished here; they differ on exp02's mixed set.
+5. Rescue is binary. A contact at any speed counts the same.
+6. The full grid contains 6 late-contact benign cells out of 101. False-brake rates in a
+   full run will include window-end brakes, which can change which threshold meets the
+   5 % budget. Check `operating_point[].met_budget` before quoting the left panel.
 
 ---
 
-## Experiment 05: Cut-in Lead Time
+## F2 — exp05: cut-in brake lead time
+
+`outputs/figures/exp05_lead_time.png`, `outputs/logs/exp05.csv` (75 rows = 25 scenarios ×
+{reactive, cv, ctrv}), `outputs/logs/exp05_summary.json` (`n_rows` = 50 is the number of
+Reactive-vs-predictive pairs). Same grid as F4, t_on = 2.0 s, t_off = 3.0 s.
+Lead time = onset(Reactive) − onset(predictive). It is defined only when both brake.
 
 ### Claim
 
-**Predictive systems detect imminent cut-in collisions earlier than Reactive, providing additional reaction time (lead time). CV achieves ~0.4s median lead time; CTRV achieves ~0.5s.**
+In the 9 scenarios where both systems brake, the median lead time is 0.4 s for CV and
+0.5 s for CTRV. The lead is not uniformly positive: it is zero or negative in 4 of the 9.
+The three scenarios with a lead of 1.0 s or more are the three cells that CV rescues and
+Reactive does not in F4.
 
 ### Evidence
 
-**Figure**: `outputs/figures/exp05_lead_time.png`  
-**Data**: `outputs/logs/exp05.csv` (50 runs = 25 scenarios × 2 predictive systems)  
-**Summary**: `outputs/logs/exp05_summary.json`
+| | CV | CTRV |
+| --- | --- | --- |
+| Both brake / predictive only / neither | 9 / 5 / 11 | 9 / 5 / 11 |
+| Lead times, sorted [s] | −0.1, 0, 0, 0, 0.4, 0.6, 1.0, 1.0, 1.1 | −0.2, −0.1, 0, 0, 0.5, 0.7, 1.2, 1.2, 1.2 |
+| Min / median / 75th percentile / max [s] | −0.1 / 0.4 / 1.0 / 1.1 | −0.2 / 0.5 / 1.2 / 1.2 |
+| Reactive earlier / tie / predictive earlier | 1 / 3 / 5 | 2 / 2 / 5 |
+| Median of the leads above 0.3 s (n = 5) | 1.0 s | 1.2 s |
 
-**Key Results** (threshold t_on=2.0s, hysteresis t_off=3.0s):
-
-| System | Both Brake | Predictive Only | Neither | Median Lead Time (all) | Median Lead Time (predictive earlier) |
-|--------|------------|-----------------|---------|------------------------|---------------------------------------|
-| CV | 9/25 | 5/25 | 11/25 | 0.4s | 1.0s |
-| CTRV | 9/25 | 5/25 | 11/25 | 0.5s | 1.2s |
-
-**Interpretation**:
-- **Both brake** (9 scenarios): Both Reactive and predictive systems trigger; predictive is earlier by 0.4–0.5s median
-- **Predictive only** (5 scenarios): Reactive never brakes (cutter still in adjacent lane); predictive brakes **up to 1.0–1.2s earlier**
-- **Neither** (11 scenarios): Benign cut-ins or large gaps; no braking needed
-- **CTRV advantage**: Slightly longer lead time (0.1s median, 0.2s when earlier) due to turn-rate modeling
-
-**Lead Time Distribution**:
-- Minimum: ~0.1s (marginal earlier detection)
-- Maximum: ~1.5s (early cut-in prediction before lateral crossing)
-- 75th percentile: ~0.8s for CV, ~1.0s for CTRV
+- **Both brake (9, all dangerous).** The predictive system avoids contact in all 9.
+  Reactive collides in 3 of them, cells (14,4), (22,8), (32,12), where it brakes at 2.0 s
+  and makes contact at 2.10–2.28 s. Those are the three largest leads (CV 1.0, 1.0, 1.1 s;
+  CTRV 1.2 s each).
+- **Predictive only (5, all dangerous).** Lead time is undefined: Reactive has no brake
+  before its contact. Both Reactive and the predictive system collide in all five. The
+  predictive system brakes at 0.8–1.2 s and makes contact at 1.16–1.81 s.
+- **Neither (11).** These are exactly the 11 benign cells.
+- CTRV's onset is 0.1–0.2 s earlier than CV's in five of the nine both-brake scenarios,
+  0.1 s later in two, and equal in two.
+- `median_lead_time_when_predictive_is_earlier_s` in the summary is the median over
+  both-brake pairs with a lead above 0.3 s. It is not a statistic of the predictive-only
+  scenarios.
 
 ### Limitations
 
-1. **Lead time ≠ safety margin**: Earlier braking doesn't guarantee collision avoidance; depends on deceleration and distance
-2. **Fixed threshold**: t_on=2.0s; more aggressive thresholds (1.0s) would shift lead times but increase false brakes
-3. **No multi-agent scenarios**: Only one cutter per scenario; real highway has multiple lane-changers
-4. **Quintic profile**: Smooth, predictable lane changes; abrupt swerves would challenge CTRV's constant turn-rate assumption
-5. **Lead time doesn't account for latency**: Real systems lose 50–200ms to sensing/compute; net lead time is reduced
+1. Nine pairs per system, on a 0.1 s simulation step. Differences of 0.1 s between CV
+   and CTRV are one step.
+2. One threshold. Lead times at other thresholds were not measured.
+3. An earlier brake is not a rescue: in the five predictive-only scenarios the predictive
+   system brakes and still collides.
+4. A smooth quintic lane change with `lc_T = 3.0 s` only.
 
 ---
 
-## Summary of Limitations (Consolidated)
+## What these results do not show
 
-### Data & Scenario Limitations
+Stated in the repository and not changed by this work (README "Limitations",
+[scenarios.md](scenarios.md) §10, d-baseline §8):
 
-1. **Synthetic scenarios only**: Parametric quintic lane changes, not real traffic distributions
-2. **2D simplification**: No vertical dynamics, road grade, or banking
-3. **Point-mass vehicles**: No yaw, roll, pitch, or tire friction models
-4. **No multi-agent interaction**: Agents don't respond to ego braking (log replay)
-5. **Fixed ego path**: Straight-line only; no steering evasion
-6. **Deterministic**: No stochastic agent behavior or intent uncertainty
+- Scenarios are synthetic and not calibrated to real lane changes. One agent per scenario,
+  replayed from its log; it does not react to the ego.
+- Point-mass motion, longitudinal braking only, 2D, no steering.
+- No perception: systems read trajectory-level data.
 
-### Perception & Sensing Limitations
+Specific to this deliverable:
 
-1. **Perfect perception**: Direct trajectory input; no sensor noise, occlusion, or failure modes
-2. **Latency approximation**: Computational delay modeled as fixed lag; real pipelines have variable latency
-3. **No tracking errors**: No lost tracks, ID switches, or multi-hypothesis tracking
-4. **Full observability**: Complete state of all agents; real sensors have limited FOV and range
+- **Latency.** Every row uses `latency = 0.0`. `run_matrix` accepts a latency list, but
+  `experiments/exp04_latency.py` is still a stub that raises `NotImplementedError`, so
+  nothing here says anything about delay.
+- **Resolution.** Quick mode only: 2 thresholds, a 5 × 5 grid.
+- **Scoring window.** Benign means "no contact within 15 s". See "Read first".
+- **No statistics.** Deterministic grids and small counts. Rates are descriptive.
+- **No external validity.** Nothing here is evidence about real traffic, real vehicles or
+  compliance with any AEB standard.
 
-### Modeling Limitations
+## Summary
 
-1. **Simplified predictors**: CV/CA/CTRV are classical baselines; modern learned models (LSTM, Transformer) may perform better
-2. **Fixed TTC threshold**: Binary brake decision; real controllers use continuous pedal modulation
-3. **No brake fade or ABS**: Assumes constant deceleration; real brakes heat up and lose effectiveness
-4. **Rectangular collision geometry**: 5.0m × 2.5m OBB; real vehicles have complex shapes
-5. **No impact dynamics**: Collision is binary (yes/no); no injury severity or crash pulse modeling
+Research question: how much does prediction enlarge the AEB safe region, and where does it
+still fail? In this configuration and on these grids:
 
-### Experimental Limitations
+1. On the cut-in grid at t_on = 2.0 s, prediction with CV raises the rescue rate from
+   6/14 to 9/14, and the true future would raise it to 12/14 (F4). The remaining two
+   cells are below the 1D stopping limit and are not rescued even by braking from t = 0.
+2. The three cells CV gains are those where it brakes 1.0–1.1 s before Reactive (F2).
+   Elsewhere the lead is between −0.1 s and 0.6 s.
+3. On the mixed set at t_on = 2.0 s, collisions fall from 14/57 (Reactive) to 7/57 (CV),
+   4/57 (CA) and 2/57 (Oracle) (F3).
+4. The measured false-brake cost of prediction comes from the aborted cut-ins: CV and CA
+   brake on 4 of 6, Reactive and Oracle on none. The other false brakes of CV, CA and
+   Oracle are window-end brakes shared by all four systems (F3).
 
-1. **Coarse grids**: Quick mode (5×5 boundary, 2 thresholds) for speed; full grids would give finer resolution
-2. **Single lc_T**: Only 3.0s lane-change duration tested; 2.0s or 4.0s might shift boundaries
-3. **No sensitivity analysis**: Lateral acceleration bound (3.0 m/s²), brake decel (6.0 m/s²) not swept
-4. **Limited benign scenarios**: Abort cut-ins hand-crafted; real benign distribution unknown
-5. **No real-world validation**: Results not compared to field data (nuScenes, Waymo, etc.)
-
-### Generalization Limitations
-
-1. **No external validity**: Conclusions apply to this specific 2D point-mass TTC-threshold setup only
-2. **No safety certification**: Results do not imply compliance with ISO 26262, NHTSA, or Euro NCAP standards
-3. **No deployment guidance**: Not sufficient for production AEB tuning or liability assessment
-
----
-
-## Implications for Future Work
-
-### Near-Term Improvements (Within Current Framework)
-
-1. **Dense grid sweeps**: Run full 15×17 boundary grid and 6-threshold trade-off
-2. **Sensitivity analysis**: Vary max_lat_acc (2.0–4.5 m/s²), a_brake (4.0–8.0 m/s²), lc_T (2.0–4.0s)
-3. **Latency experiments**: Complete exp04 (τ ∈ [0, 300] ms) to quantify perception delay cost
-4. **Per-family analysis**: Separate boundaries for cut_in, lead_brake, crossing
-5. **Impact severity**: Weight collisions by relative velocity at first contact
-
-### Medium-Term Extensions (Requires New Implementation)
-
-1. **Learned predictors**: Add LSTM/Transformer baselines (requires training dataset)
-2. **Continuous control**: Replace binary brake with PID or MPC throttle/brake modulation
-3. **Steering evasion**: Add lateral control (requires path planning and stability checks)
-4. **Multi-agent interaction**: Agent responds to ego braking (requires game-theoretic modeling)
-5. **Sensor simulation**: Add noise, occlusion, and tracking errors (requires perception pipeline)
-
-### Long-Term Validation (Requires Real Data)
-
-1. **Real scenario distribution**: Fit parameters to naturalistic driving data (NGSIM, HighD, inD)
-2. **Field validation**: Test on nuScenes, Waymo, or recorded vehicle data
-3. **Human-in-loop**: Compare AEB timing to human drivers' brake responses
-4. **Crash reconstruction**: Validate against NHTSA crash database (pre-crash kinematics)
-
----
-
-## Conclusion
-
-The experimental results demonstrate:
-
-1. ✅ **Prediction improves safety**: CV reduces collision rate by 50% vs Reactive (exp02)
-2. ✅ **Prediction expands safe region**: CV rescues 21% more dangerous scenarios (exp03)
-3. ✅ **Prediction provides lead time**: CV/CTRV brake 0.4–0.5s earlier on cut-ins (exp05)
-4. ⚠️ **Prediction increases false brakes**: CV's false-brake rate is 76% higher than Reactive (exp02)
-5. ⚠️ **Prediction error has cost**: Oracle outperforms CV by 21%, showing room for better predictors (exp03)
-
-**Research question answered**: In the specific setting of 2D point-mass kinematics with TTC-threshold braking on parametric synthetic scenarios, **prediction expands the AEB safety region by ~21% (measured by rescue rate)**, but **perfect prediction (Oracle) could expand it by an additional 21%**, indicating significant value from improving prediction accuracy.
-
-**Generalization**: These conclusions apply to the tested configuration and do not establish real-world safety superiority. Field validation on naturalistic driving data is required before deployment.
-
----
-
-**Generated**: 2026-11-23 13:42 UTC  
-**Figures**: `outputs/figures/exp{02,03,05}*.png`  
-**Data**: `outputs/logs/exp{02,03,05}.{csv,json}`  
-**Tests**: 348/350 passed (2 failures: missing optional toy data)  
-**Commit**: To be included in D's M3 PR on branch `cursor/d-m3-results-and-report-64a3`
+Open items that need a team decision or more runs are listed in the PR description and in
+d-baseline §6: the scoring window (Q2), the full-resolution runs, and whether exp04 is
+built or dropped.
