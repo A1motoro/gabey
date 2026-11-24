@@ -99,15 +99,25 @@ python experiments/exp07_real_clip.py
 只有维护者重新编译它才需要 `grpcio-tools` 和网络，常规运行不需要 TensorFlow。
 API 和给 P 的输入契约见 [interfaces.md](interfaces.md)；A 的讲解要点见 [L3_A_handoff.md](L3_A_handoff.md)。
 
-2026-11-23 初次交付（`e1fa151`）本机验收：`pytest -q -p no:cacheprovider` 为 **266 passed / 2 skipped**（18.33 s），
+2026-11-23 初次交付（`e1fa151`）本机具备课程 toy CSV 和 `[womd]` 额外依赖，验收：`pytest -q -p no:cacheprovider` 为 **266 passed / 2 skipped**（18.33 s），
 两个 skip 是既有 CTRV/Oracle 未实现项；新增 L3 测试 **39 项**（38 项快照/适配测试 + 1 项可选 CRC 测试）。
 `ruff check src tests` 和新增脚本检查通过，`git diff --check` 通过，三张图已视觉核验。
 另在项目外临时目录运行 exp07，逐行 CSV/JSON 与默认产物一致；
 NPZ 测试还明确阻断了 protobuf 导入和原始 Waymo 文件访问。
 
-合入 main（`a3f91cb`）后的 PR #16 集成验收：**389 passed**（38.60 s），无跳过；
+在 L3 分支合并 main（`a3f91cb`）后，本机具备课程 toy CSV，PR #16 集成验收：
+**389 passed**（38.60 s），无跳过；这是本分支合并 main 的验收，不能据此推断所有克隆环境。
 Ruff 检查通过。默认 exp07 重跑保持两份说明案例时刻一致；可选 CA 接入通过，
 Oracle 的未来真值覆盖检查阻止把端点保持当成真实未来。
+
+## PR #16 评审后的干净克隆说明
+
+组员在 `7d6c1ba` 的干净克隆（无课程 toy CSV）上实测 **387 passed / 2 failed**。
+失败是 `test_load_toy` / `test_load_toy_ego` 两项依赖外部课程文件的集成测试，不是 L3 回归。
+本次修复使缺少课程 CSV 时这两项明确 skip，并增加自包含 CSV 单元测试，
+保证没有外部数据也会测试 parser、ego 排除和稳定 agent ID。已有 CSV 的解析/内容错误仍然失败。
+未安装可选 google-crc32c 时，独立 CRC 测试也会 skip；NPZ 快照与默认 exp07 不需要 protobuf。
+`389 passed` 是此前特定环境的历史记录，本次验收以最新命令输出为准。
 
 ## 可直接放进英文报告的段落
 
