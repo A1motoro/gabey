@@ -5,11 +5,11 @@
 > claim → evidence (figure) → limitation. Figure numbers follow d-baseline §5:
 > **F2** = exp05, **F3** = exp02, **F4** = exp03. F5 (exp04, latency) was not run.
 >
-> **Scoring rule in this version.** Brakes are scored in the first 15 s and collisions
-> over 19 s. This is D's implementation of a fix for open question Q2 and is **not yet
-> agreed by A and C**: [scenarios.md](scenarios.md) §10 item 5, [interfaces.md](interfaces.md)
-> and [l2-baseline.md](l2-baseline.md) still describe one 15 s window. The numbers under
-> the one-window rule are kept below in "What the two windows changed".
+> **Scoring rule.** Brakes are scored in the first 15 s and collisions over 19 s.
+> A and C agreed to this on 2026-11-24. The same rule is in [scenarios.md](scenarios.md)
+> §10 item 5, [spec.md](spec.md) §1.5, [interfaces.md](interfaces.md) and
+> [l2-baseline.md](l2-baseline.md). The numbers under the one-window rule are kept below
+> in "What the two windows changed".
 
 ## What was run
 
@@ -313,9 +313,9 @@ Specific to this deliverable:
   `experiments/exp04_latency.py` is still a stub that raises `NotImplementedError`, so
   nothing here says anything about delay.
 - **Resolution.** Quick mode only: 2 thresholds, a 5 × 5 grid.
-- **Scoring windows.** See "Read first". The two-window rule is D's and awaits A's and
-  C's agreement; C's closed-loop experiment and `--legacy-l1` use one 15 s window. A
-  contact after 19 s still leaves a scenario benign, and late-contact scenarios are unscored.
+- **Scoring windows.** See "Read first". A and C agreed to the two windows on 2026-11-24.
+  C's closed-loop experiment and `--legacy-l1` use one 15 s window. A contact after 19 s
+  still leaves a scenario benign, and late-contact scenarios are unscored.
 - **No statistics.** Deterministic grids and small counts. Rates are descriptive.
 - **No external validity.** Nothing here is evidence about real traffic, real vehicles or
   compliance with any AEB standard.
@@ -336,6 +336,5 @@ still fail? In this configuration and on these grids:
    brake on 4 of 6, Reactive and Oracle on none. The only other false brake is one by
    Reactive in a crossing scenario. Oracle has none (F3).
 
-Open items that need a team decision or more runs are listed in the PR description and in
-d-baseline §6: A's and C's agreement to the two scoring windows (Q2), the full-resolution
-runs, and whether exp04 is built or dropped.
+A and C agreed to the two scoring windows on 2026-11-24 (Q2). Still open: the
+full-resolution runs, and whether exp04 is built or dropped.

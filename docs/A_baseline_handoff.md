@@ -116,7 +116,7 @@ make_scenario(kind, ...)    ConstantVelocity.predict()    run_sim(...)          
 
 **四个必须知道的约定**（写代码的 P/D 会用错的地方）：
 
-1. **`run_sim` 的 `duration` 必须传 `scenario.params["duration"]`**（我们的是 15 s，而 `run_sim` 默认 10 s）。不传的话，部分 dangerous 场景会被误判成 benign。
+1. **`run_sim` 的 `duration` 必须显式传入**（生成器默认 15 s，而 `run_sim` 默认 10 s）。不传的话，部分 dangerous 场景会被误判成 benign。D 的 L2 比较不沿用这 15 s：仿真 19 s，日志 23 s，见 [l2-baseline.md](l2-baseline.md)。
 2. `Scenario.params` 里存着**全部解析后的参数**（含 `gap_d`、`rel_v`、`duration`、`peak_lat_acc`），D 建 DataFrame 时直接 `{**sc.params, "kind": sc.kind}` 就是一行。
 3. `lane_width = 3.5` 同时是"本车道中心线间距"和**Reactive baseline 的过滤阈值**（`|偏移| < 1.75` 才算"在本车道"）。
 4. `agent_id` 唯一且稳定（`"cutter"` / `"lead"` / `"crosser"`），`OraclePredictor` 靠它取真实未来。
@@ -204,8 +204,8 @@ make_scenario("cut_in", gap_d=25, rel_v=2, lc_T=1.5)   # ValueError: 峰值 8.98
 | **Reactive** | 无预测：只看**已在本车道**的目标，纵向 `range/range-rate` |
 | **Predictive** | 外推所有目标的 2D 运动（含横向），因此**切入还没完成**就能察觉 |
 | **lead time** | Reactive 与 Predictive 首次报警的时间差 = "prediction 提前了多少秒" |
-| **benign** | 同一场景不刹车也不会撞 ⇒ 其中的任何刹车都是误报 |
-| **false brake** | benign 场景里发生的刹车（counterfactual 定义） |
+| **benign** | 无制动在 19 s 内不接触。15 s 内接触是 dangerous；介于两者之间是 late contact，不计入比率 |
+| **false brake** | benign 场景里前 15 s 内下达的刹车 |
 | **danger map** | 在参数平面上标出"不刹车会撞 / 不会撞"的图（本模块的产物） |
 | **failure boundary** | 换成真实系统后，同一平面上"该系统的安全区边界" |
 

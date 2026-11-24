@@ -9,7 +9,7 @@ exp02/03/05 快速实验已重跑，§9 的主要数字保持一致，图与 CSV
 审核修正后全仓回归 300 passed / 1 deselected（已知 Windows Demo 端口测试），
 变更 Python 文件 Black / Ruff 与 `git diff --check` 通过。
 
-> 2026-11-23：exp02 / exp03 / exp05 的 L2 模式改用**两个窗口**——刹车决策在前 15 s 内计分，碰撞结果看到 19 s——并把场景分成 dangerous / late_contact / benign 三类（§3、§6-Q2）。这是 D 在评估侧的实现，**定义变更尚待 A、C 确认**；`--legacy-l1` 仍是单一 15 s 窗口。
+> 2026-11-24：A、C 同意 exp02 / exp03 / exp05 的 L2 模式使用**两个窗口**——刹车决策在前 15 s 内计分，碰撞结果看到 19 s——并把场景分成 dangerous / late_contact / benign 三类（§3、§6-Q2）。`--legacy-l1` 与 C 的 12 场景验收仍是单一 15 s 窗口。
 
 > Owner：D（yj）· 配合现有 [spec.md](spec.md) v2 与 [interfaces.md](interfaces.md)。
 > P 的 baseline 回答"系统怎么判断风险"；D 的 baseline 回答"**怎么公平地判定一个系统好不好**"。本文记录 D 的度量、数据表、实验、验收标准与 L2 验证结果。
@@ -55,7 +55,7 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 
 两个窗口的理由：系统在 TTC 低于 `t_on` 时刹车，`t_on` 最大 3.0 s，小于 4 s 预测时域。所以前 15 s 内下达的刹车，所依据的预测接触时刻不晚于 18 s，落在 19 s 的结果窗口内，这个预测对不对由 19 s 的无制动对照判定。只看 15 s 会把为 15 s 之后的真实接触而刹的车记成误刹（方向一），也会把仅被推迟到 15 s 之后的碰撞记成救下（方向二）。实测与拆分见 [results.md](results.md)。
 
-状态：以上是 D 的评估脚本在 L2 模式下的口径。[scenarios.md](scenarios.md) §10 第 5 条、[interfaces.md](interfaces.md) 的 `Scenario.params` 一条和 [l2-baseline.md](l2-baseline.md) 仍写单一 15 s 窗口，归 A、C 维护，本次未改；`--legacy-l1` 与 C 的 `c_l2_closed_loop.py` 也仍是单一 15 s 窗口。
+状态：A、C 已于 2026-11-24 同意这个口径。[scenarios.md](scenarios.md) §10 第 5 条、[spec.md](spec.md) §1.5、[interfaces.md](interfaces.md) 和 [l2-baseline.md](l2-baseline.md) 写的是同一规则。`--legacy-l1` 与 C 的 `c_l2_closed_loop.py` 仍是单一 15 s 窗口。
 
 ## 4. 实验矩阵数据表（`run_matrix` 输出 schema）
 
@@ -114,7 +114,7 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 
 Q2 实测（2026-11-23）：单一 15 s 窗口下，exp02 的 53 个 benign 里有 6 个在 15–19 s 之间接触，其中 3 个在 15.00–15.14 s 接触，四个系统都在 13.1–13.3 s 刹车并被记为误刹，Oracle 的 3 例误刹全部来自这 3 个场景。反方向也有 1 例：`lead_brake`（init_gap 100、decel 1.0）在 `t_on = 1.0 s` 时四个系统都只把接触从 14.78 s 推迟到 15.09–15.21 s，却被记为救下。
 
-Q2 处理（2026-11-23，D 的评估侧实现，**待 A、C 确认**）：L2 模式改为 §3 的两个窗口与三类场景。exp02 变为 57 dangerous / 6 late_contact / 47 benign，Oracle 误刹为 0；quick 边界网格无 late_contact（14 / 0 / 11），完整网格为 154 / 6 / 95。`experiments/check_outcome_window.py` 把结果窗口再延长到 25 s 复跑：exp02 没有碰撞标记变化、前 15 s 内的刹车没有变化，只有 1 个 benign 场景（`lead_brake` init_gap 80、decel 0.3）在 23.36 s 接触，且没有系统在前 15 s 内为它刹车。数字与拆分见 [results.md](results.md)。需要 A、C 决定的是：是否接受这个口径并相应修改 scenarios.md §10 第 5 条、interfaces.md 与 l2-baseline.md 的表述；不接受则 D 把 `experiments/scenario_sets.py` 的 `OUTCOME_PAD` 设回 0：两个窗口相等时就是原来的单一 15 s 窗口。
+Q2 处理（A、C 于 2026-11-24 同意）：L2 模式改为 §3 的两个窗口与三类场景。exp02 变为 57 dangerous / 6 late_contact / 47 benign，Oracle 误刹为 0；quick 边界网格无 late_contact（14 / 0 / 11），完整网格为 154 / 6 / 95。`experiments/check_outcome_window.py` 把结果窗口再延长到 25 s 复跑：exp02 没有碰撞标记变化、前 15 s 内的刹车没有变化，只有 1 个 benign 场景（`lead_brake` init_gap 80、decel 0.3）在 23.36 s 接触，且没有系统在前 15 s 内为它刹车。数字与拆分见 [results.md](results.md)。
 
 ## 7. 验收标准（对应 spec v3 里程碑）
 
