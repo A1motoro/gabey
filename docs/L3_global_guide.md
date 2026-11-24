@@ -170,11 +170,11 @@ C (M3 pbs.sim / pbs.demo)           D (M4 pbs.eval / pbs.systems / experiments)
 - 在 `src/pbs/sim/policy.py` 新增 `StagedBrakingPolicy`（对齐 ISO 15622 / Euro NCAP 分级逻辑）：
   - **状态与目标加速度**：
     - `hard_brake`（`TTC < t_on_hard=1.5 s`，退出 `t_off_hard=2.0 s`）：目标 `-6.0 m/s²`；
-    - `soft_brake`（`1.5 s ≤ TTC < t_on_soft=3.0 s`，退出 `t_off_soft=3.5 s`）：目标 `-2.5 m/s²`；
-    - `recover` / `cruise`（`TTC > 3.5 s`）：若 $v < v_{\text{target}}$ 则以 `+1.5 m/s²` 温和恢复至 $v_{\text{target}}$，否则 `0.0 m/s²`。
-  - **双档 Jerk 限幅**：
+    - `soft_brake`（非制动态 `1.5 s ≤ TTC < t_on_soft=3.0 s`，或 `hard_brake` 退出后 `2.0 s < TTC ≤ t_off_soft=3.5 s`）：目标 `-2.5 m/s²`；
+    - `recover` / `cruise`（非制动态 `TTC ≥ 3.0 s`，或制动态 `TTC > 3.5 s` 退出制动后）：若 $v < v_{\text{target}}$ 则以 `+1.5 m/s²` 温和恢复至 $v_{\text{target}}$，否则 `0.0 m/s²`。
+  - **双档 Jerk 限幅与前瞻收力**：
     - 处于 `hard_brake`（紧急避险优先）：使用 **`jerk_hard = 20.0 m/s³`**（每 0.1 s 步变化 `2.0 m/s²`，0.3 s 快速建压至 `-6.0 m/s²`；若已处于 `-2.5 m/s²` 预制动底压则仅需 **0.2 s** 踩满）；
-    - 处于 `soft_brake` / `recover` / `cruise`（舒适平顺优先）：使用 **`jerk_soft = 5.0 m/s³`**（每 0.1 s 步变化 `0.5 m/s²`，符合 ISO 15622 舒适限值）。
+    - 处于 `soft_brake` / `recover` / `cruise`（舒适平顺优先）：使用 **`jerk_soft = 5.0 m/s³`**（每 0.1 s 步变化 `0.5 m/s²`，符合 ISO 15622 舒适限值）；接近刹停或目标巡航车速前按 `jerk_soft` 提前卸力（`_speed_limit_accel`），消除单帧 Jerk 尖峰；同时保留 `max_jerk=` 兼容参数。
 - `simulator.py` 支持连续加速度运动学步进（含 `a > 0` 恢复加速与步内刹停/达速截断）。
 
 ### C-T3：因果缓存高斯观测噪声（`GaussianObservationModel`）

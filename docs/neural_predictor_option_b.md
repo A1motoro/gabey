@@ -1,8 +1,8 @@
 # L3 方案 B 神经网络预测器构建与 `{128, 256, 512, 1024}` 容量验证规范
 
 > **维护者**：P（华华 · `pbs.prediction` & `pbs.risk`） · **协同**：A（Persistent · `pbs.data`）、C（前背痛 · `pbs.sim`）、D（yj · `pbs.eval`）
-> **基准分支**：`main`（`c74a3de`）
-> **关联文档**：[L3 全局总纲](L3_global_guide.md) · [接口冻结规范](interfaces.md) · [CA 与固定切片底座](CA_scenario_support.md) · [L2 闭环基线](l2-baseline.md) · [L3 LR 验证报告](l3-validation.md) · [三级滞回与双档 Jerk](staged_braking_and_jerk.md)
+> **基准分支**：`main`（`3f141f7`，已合入 PR #15 L3 总纲与 PR #16 Waymo 回放数据）
+> **关联文档**：[L3 全局总纲](L3_global_guide.md) · [Waymo 数据交接](L3_A_handoff.md) · [Waymo 方案](L3_waymo_plan.md) · [接口冻结规范](interfaces.md) · [CA 与固定切片底座](CA_scenario_support.md) · [L2 闭环基线](l2-baseline.md) · [L3 LR 验证报告](l3-validation.md) · [三级滞回与双档 Jerk](staged_braking_and_jerk.md)
 
 ---
 
@@ -13,7 +13,7 @@
 | 对接文档 | 既有冻结约定 | `NeuralPredictor`（方案 B）的对齐方式 |
 | --- | --- | --- |
 | **[docs/interfaces.md](interfaces.md)** | `Predictor.predict(history, horizon, dt) -> (horizon, 2)`；可选 `bind(scenario)`；`horizon=0` 返回 `(0, 2)`；严禁在 `predict()` 中读取 `Trajectory.accel` 真值或修改输入 `history` | `NeuralPredictor.predict()` 签名与返回形状 `(H, 2)` 完全一致；通过 `bind(scenario)` 只读缓存 `scenario.ego_path` 与 `lane_width`；异方差不确定度 $(\sigma_{\text{lon},k}, \sigma_{\text{lat},k})$ 保存在实例属性 `self.latest_std: (H, 2)`，不破坏返回值契约 |
-| **[docs/CA_scenario_support.md](CA_scenario_support.md)**<br>**[docs/l3-validation.md](l3-validation.md)** | `prediction_slices(scenario, history=1.0, horizon=..., stride=0.5)` 提供固定的 `[t0 − 1.0, t0]` 滑动历史窗口（11 个采样点 = 10 个 `0.1 s` 间隔），`CA` / `CTRV` / `LR` 均使用 `m=10` 帧 | 神经网络同样固定读取最近 `1.0 s`（10 帧）历史，在 `exp01_predictor_ade.py` 中与 `CV` / `CA` / `CTRV` / `LR` / `Oracle` 共用完全相同的预测起点 `t0` 与真值切片 |
+| **[docs/CA_scenario_support.md](CA_scenario_support.md)**<br>**[docs/l3-validation.md](l3-validation.md)** | `prediction_slices(scenario, history=1.0, horizon=..., stride=0.5)` 提供 `[t0 − 1.0, t0]` 的 11 个点（10 个 `0.1 s` 间隔），`CA` / `CTRV` / `LR` 内部取最近 `m=10` 帧（覆盖 `0.9 s`） | 与 `exp01_predictor_ade.py` 共用完全相同的预测起点 `t0` 与真值切片；神经网络输入特征固定取最近 **10 帧（覆盖 `0.9 s`，`[t0 − 0.9, t0]`）**，与 `CA` / `CTRV` / `LR` 的 `m=10` 窗口严格对齐 |
 | **[docs/l2-baseline.md](l2-baseline.md)** | `PredictiveAssessor` 负责观测延迟对齐（`age = t_now − history.t[-1]`），并在 L2/L3 矩形模式下调用 `assess_risk(..., swept=True)` 做步间连续扫掠 | 延迟对齐与步间线性扫掠逻辑保持不变；`PredictiveAssessor` 新增可选参数 `uncertainty_scale: float = 0.0`（默认 `0.0` 不膨胀；设为 $\kappa = 1.0$ 时按 `predictor.latest_std` 动态膨胀目标车碰撞包络） |
 | **[docs/d-baseline.md](d-baseline.md)** | `pbs.systems.SYSTEMS` 统一注册被比较的 AEB 系统，`run_matrix` 驱动 `exp02` / `exp03` / `exp05` | 在 `systems.py` 中新增 `"nn_traj"`（60 维纯轨迹）、`"nn"`（80 维含车道，$\kappa=0$）、`"nn_ua"`（80 维含车道 + 包络膨胀，$\kappa=1.0$） |
 
@@ -58,10 +58,12 @@
 
 ### 3.2 输出张量 $y \in \mathbb{R}^{40 \times 4}$（未来 `4.0 s`，步长 `0.1 s`）
 
+定义标准二维旋转矩阵 $R(\theta_0) = \begin{bmatrix}\cos\theta_0 & -\sin\theta_0 \\ \sin\theta_0 & \cos\theta_0\end{bmatrix}$：世界系 → 局部系为 $p_{\text{local}} = R(\theta_0)^\top (p_{\text{world}} - p_0)$，局部系 → 世界系为 $p_{\text{world}} = p_0 + R(\theta_0) p_{\text{local}}$。
+
 对未来第 $k \in \{1, \dots, 40\}$ 步（时刻 $t_0 + k \cdot 0.1\text{ s}$）：
 1. **CV 物理残差锚定的局部位置均值 $(\hat{x}_k, \hat{y}_k)$ `[m]`**：
    $$\hat{x}_k = v_{x,\text{local}}(t_0) \cdot (k \Delta t) + \Delta\hat{x}_k, \qquad \hat{y}_k = v_{y,\text{local}}(t_0) \cdot (k \Delta t) + \Delta\hat{y}_k$$
-   - 经逆旋转平移 $\hat{p}_{k,\text{world}} = p_0 + R(\theta_0)^\top [\hat{x}_k, \hat{y}_k]^\top$ 转回世界坐标作为 `predict()` 返回值。
+   - 经局部 → 世界坐标变换 $\hat{p}_{k,\text{world}} = p_0 + R(\theta_0) [\hat{x}_k, \hat{y}_k]^\top$ 转回世界坐标作为 `predict()` 返回值。
 2. **正值钳位的局部位置标准差 $(\sigma_{\text{lon}, k}, \sigma_{\text{lat}, k})$ `[m]`**：
    $$\sigma_{\text{lon}, k} = \text{clip}\big(\text{softplus}(z_{\text{lon}, k}) + 0.05,\; 0.05,\; 5.0\big), \qquad \sigma_{\text{lat}, k} = \text{clip}\big(\text{softplus}(z_{\text{lat}, k}) + 0.05,\; 0.05,\; 5.0\big)$$
    - 保存在 `self.latest_std`（形状 `(H, 2)`）。当调用方请求的 `horizon != 40` 或 `dt != 0.1` 时，在 `0.1 s × 40` 网格上沿时间轴线性插值/外推。
@@ -95,7 +97,7 @@ Input x ∈ R^D (D = 80 for NN-Lane, 60 for NN-Traj)
   └─► Uncertainty Head: z_σ = Linear(H_dim → 80)(h2).reshape(40, 2) ──► σ_local = clip(softplus(z_σ)+0.05, 0.05, 5.0)
 ```
 
-> **纯 NumPy 自适应推理特性**：前向推理函数 `forward_resmlp_numpy(feat, weights, cv_anchor)` 直接根据 `.npz` 中权重矩阵 `in_w.shape[0]` 自动适配 $H_{\text{dim}}$，**切换 `128 / 256 / 512 / 1024` 时 `src/pbs/prediction/neural.py` 一行代码都不用改**！
+> **纯 NumPy 自适应推理与 `.npz` 权重布局约定**：导出 `.npz` 时，所有线性层权重严格沿用 PyTorch `nn.Linear.weight` 的 **`(out_features, in_features)`** 布局（键名：`in_w` 形状 `(H_dim, D)`、`in_b` `(H_dim,)`、`in_ln_w/b` `(H_dim,)`；`b{1,2}_w1/w2` `(H_dim, H_dim)`、`b{1,2}_b1/b2` `(H_dim,)`、`b{1,2}_ln_w/b` `(H_dim,)`；`mu_w` / `std_w` `(80, H_dim)`、`mu_b` / `std_b` `(80,)`），前向线性计算统一为 `x @ W.T + b`。加载器按输出维 `in_w.shape[0]` 自动适配任意 $H_{\text{dim}}$，**切换 `128 / 256 / 512 / 1024` 时 `src/pbs/prediction/neural.py` 一行代码都不用改**！
 
 ### 4.2 四档容量规模参数与理论复杂度对照表
 
@@ -130,7 +132,10 @@ $$N_{\text{params}}(H) = \underbrace{(80 H + H)}_{\text{Stem Linear}} + \underbr
 | **5. 闭环推理效率** | 纯 NumPy 单步延迟 `latency_ms`（10,000 次均值）与 `.npz` 大小 `size_mb` | 在精度与校准度相当时，优先选择延迟最低、体积最小的一档入库。 |
 
 #### 综合选优判据（Selection Rule）
-- 在满足 **$1\sigma$ 横向覆盖率处于 $[60\%, 78\%]$（无严重过度自信）** 且 **合成跨域 `synth_ade_2s` 优于 `CV`** 的候选中，选取 **`score = 0.5 * val_ade_2s + 0.3 * val_ade_4s + 0.2 * synth_ade_2s` 最小**的模型作为胜出者（若两档 `score` 差距 $< 1.5\%$，按奥卡姆剃刀选参数量更小的一档）；
+- **硬门槛（第 2 维校准度 + 第 3 维跨域底线）**：候选模型须满足 $1\sigma$ 横向覆盖率处于 $[60\%, 78\%]$（无严重过度自信）且合成跨域 `synth_ade_2s` 优于 `CV`；
+- **综合加权评分（整合第 1、3、4 维）**：在通过门槛的候选中，选取综合得分最小者：
+  $$\text{score} = 0.45 \cdot \text{val\_ade\_2s} + 0.25 \cdot \text{val\_ade\_4s} + 0.15 \cdot \text{synth\_ade\_2s} + 0.15 \cdot \text{noisy\_ade\_2s}$$
+- **次级决胜准则（第 5 维效率与体积）**：若两档模型的 `score` 差距 $< 1.5\%$，优先选取**纯 NumPy 单步推理延迟 `latency_ms` 更低且参数量/体积更小**的一档；
 - **产物去向**：
   - 四档权重全部保存在 `outputs/models/waymo_nn_lane_h{128,256,512,1024}.npz`，生成四档对比图 `outputs/figures/l3-predictors/neural_capacity_verification.png`；
   - 将胜出档位的权重自动复制到 **`src/pbs/prediction/weights/waymo_nn_lane.npz`**（同理导出纯轨迹版 `waymo_nn_traj.npz`）随代码入库，并在 `docs/l3-validation.md` 中完整报告四档对比表！

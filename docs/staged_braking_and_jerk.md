@@ -55,12 +55,13 @@
    $$J_k = \begin{cases} J_{\text{hard}} = 20.0\text{ m/s}^3, & \text{if state}_k = \text{\texttt{"hard\_brake"}} \\ J_{\text{soft}} = 5.0\text{ m/s}^3, & \text{otherwise} \end{cases}$$
    $$a_{\text{raw}} = \text{clip}\big(a_{\text{target}},\; a_{k-1} - J_k \cdot \Delta t,\; a_{k-1} + J_k \cdot \Delta t\big)$$
 
-2. **物理边界钳位（防倒车与防超速）**：
-   - **静止钳位**：若当前车速 $v_k \le 0$ 且 $a_{\text{raw}} < 0$，则车辆已刹停，令 $a_k = 0.0$；
-   - **恢复达速钳位**：若 $a_{\text{raw}} > 0$ 且 $v_k + a_{\text{raw}} \cdot \Delta t > v_{\text{target}}$，则令：
-     $$a_k = \min\left(a_{\text{raw}},\; \frac{v_{\text{target}} - v_k}{\Delta t}\right)$$
-     使步末车速精确收敛至 $v_{\text{target}}$，不发生超调；
-   - 其余情况 $a_k = a_{\text{raw}}$，并更新内部状态 `self.prev_a = a_k`。
+2. **速度边界前瞻卸力（防刹停/达速单帧 Jerk 尖峰，与 PR #17 `policy.py` 一致）**：
+   - 若仅在 $v \le 0$ 时一步把加速度打成 $0$，从 $-6.0\text{ m/s}^2$ 刹停的相邻两帧会出现 $60\text{ m/s}^3$ 的 Jerk 尖峰；恢复加速达速时一步截断同样会突破 `jerk_soft = 5.0 m/s³`。
+   - 因此引入**前瞻卸力包络 $a_{\text{lim}}(v_{\text{margin}})$**：设单步舒适卸力步长为 $\Delta a_{\text{rel}} = J_{\text{soft}} \cdot \Delta t$，若在包含当前步在内的 $n$ 个步内以最大舒适卸力斜率减至 $0$，消耗的速度总量为 $\Delta t \cdot \big(n|a| - \Delta a_{\text{rel}} \cdot \frac{n(n-1)}{2}\big) = v_{\text{margin}}$，令：
+     $$n = \max\!\left(1,\; \left\lceil \frac{\sqrt{1 + 8 v_{\text{margin}} / (\Delta t \cdot \Delta a_{\text{rel}})} - 1}{2} \right\rceil\right), \qquad a_{\text{lim}}(v_{\text{margin}}) = \frac{v_{\text{margin}}}{n \Delta t} + \frac{n - 1}{2} \Delta a_{\text{rel}}$$
+   - 对制动（$a_{\text{raw}} < 0$）：令 $a_k = \max\big(a_{\text{raw}},\; -a_{\text{lim}}(v_k)\big)$，在刹停前提前按 $J_{\text{soft}}$ 卸力；
+   - 对恢复加速（$a_{\text{raw}} > 0$）：令 $a_k = \min\big(a_{\text{raw}},\; +a_{\text{lim}}(\max(0, v_{\text{target}} - v_k))\big)$，在到达 $v_{\text{target}}$ 前提前按 $J_{\text{soft}}$ 收力；
+   - 更新 `self.prev_a = a_k`。全过程严格保证急刹步 $|a_k - a_{k-1}|/\Delta t \le J_{\text{hard}}$、其余所有步（含刹停与达速收尾）$\le J_{\text{soft}}$。
 
 ---
 
@@ -82,27 +83,30 @@
 
 ---
 
-## 4. 代码实现模板（供 C 直接落入 `src/pbs/sim/policy.py`）
+## 4. 代码实现模板（与 PR #17 `src/pbs/sim/policy.py` 对齐）
+
+> 以下代码沿用 `src/pbs/sim/policy.py` 顶部的既有常量 `CRUISE, BRAKE = "cruise", "brake"`，并保留 `max_jerk: float | None = None` 兼容参数（显式传入时令 `jerk_soft = jerk_hard = max_jerk`）。
 
 ```python
+import math
+
+# 沿用 src/pbs/sim/policy.py 顶部常量：CRUISE, BRAKE = "cruise", "brake"
 SOFT_BRAKE, HARD_BRAKE, RECOVER = "soft_brake", "hard_brake", "recover"
-BRAKE_ACTIONS = frozenset({BRAKE, SOFT_BRAKE, HARD_BRAKE})
 
 
 def is_braking_action(action: str) -> bool:
     """True for L1/L2 'brake' and L3 'soft_brake' / 'hard_brake'."""
-    return action in BRAKE_ACTIONS
+    return action in (BRAKE, SOFT_BRAKE, HARD_BRAKE)
+
+
+def _speed_limit_accel(speed_margin: float, dt: float, jerk_step: float) -> float:
+    """Largest acceleration magnitude that can ramp to zero within the speed margin."""
+    n = max(1, math.ceil((math.sqrt(1 + 8 * speed_margin / (dt * jerk_step)) - 1) / 2))
+    return (speed_margin / dt) / n + (n - 1) * jerk_step / 2
 
 
 class StagedBrakingPolicy:
-    """Three-stage hysteresis AEB controller with dual-rate jerk limiting.
-
-    States:
-      - 'cruise':     target 0.0 m/s²       (jerk_soft)
-      - 'recover':    target +a_recover     (jerk_soft, capped at v_target)
-      - 'soft_brake': target -a_soft        (jerk_soft)
-      - 'hard_brake': target -a_hard        (jerk_hard)
-    """
+    """TTC hysteresis with independent comfort and emergency acceleration slew rates."""
 
     def __init__(
         self,
@@ -117,7 +121,10 @@ class StagedBrakingPolicy:
         jerk_soft: float = 5.0,
         jerk_hard: float = 20.0,
         v_target: float | None = None,
+        max_jerk: float | None = None,
     ):
+        if max_jerk is not None:
+            jerk_soft = jerk_hard = max_jerk
         params = (
             t_on_soft,
             t_off_soft,
@@ -130,75 +137,57 @@ class StagedBrakingPolicy:
             jerk_hard,
         )
         if not all(math.isfinite(x) for x in params):
-            raise ValueError("Policy parameters must be finite.")
-        if not (0 < t_on_hard < t_off_hard <= t_on_soft < t_off_soft):
-            raise ValueError("Require 0 < t_on_hard < t_off_hard <= t_on_soft < t_off_soft.")
-        if not (0 < a_soft < a_hard and a_recover >= 0 and 0 < jerk_soft <= jerk_hard):
-            raise ValueError("Invalid acceleration or jerk bounds.")
-        self.t_on_soft, self.t_off_soft = float(t_on_soft), float(t_off_soft)
-        self.t_on_hard, self.t_off_hard = float(t_on_hard), float(t_off_hard)
-        self.a_soft, self.a_hard, self.a_recover = float(a_soft), float(a_hard), float(a_recover)
-        self.a_brake = self.a_hard  # compatibility attribute for maximum braking capability
-        self.jerk_soft, self.jerk_hard = float(jerk_soft), float(jerk_hard)
-        self._default_v_target = None if v_target is None else float(v_target)
-        self.reset(v_target=self._default_v_target)
+            raise ValueError("Staged braking parameters must be finite.")
+        if not 0 < t_on_hard < t_off_hard <= t_on_soft < t_off_soft:
+            raise ValueError("Invalid staged TTC thresholds.")
+        if not 0 < a_soft <= a_hard or a_recover < 0 or not 0 < jerk_soft <= jerk_hard:
+            raise ValueError("Invalid staged acceleration or jerk bounds.")
+        self.t_on_soft, self.t_off_soft = t_on_soft, t_off_soft
+        self.t_on_hard, self.t_off_hard = t_on_hard, t_off_hard
+        self.a_soft, self.a_hard = a_soft, a_hard
+        self.a_recover, self.a_brake = a_recover, a_hard
+        self.jerk_soft, self.jerk_hard = jerk_soft, jerk_hard
+        self._default_v_target = v_target
+        self.reset()
 
     def reset(self, *, v_target: float | None = None) -> None:
+        if v_target is None:
+            v_target = self._default_v_target
+        if v_target is not None and (not math.isfinite(v_target) or v_target < 0):
+            raise ValueError("Target speed must be finite and nonnegative.")
+        self.v_target = v_target
         self.state = CRUISE
         self.prev_a = 0.0
-        self.v_target = self._default_v_target if v_target is None else float(v_target)
-
-    def _update_stage(self, ttc: float, v: float) -> None:
-        if math.isnan(ttc) or ttc < 0:
-            raise ValueError("TTC must be nonnegative or positive infinity.")
-        if self.state == HARD_BRAKE:
-            if ttc > self.t_off_hard:
-                if ttc <= self.t_off_soft:
-                    self.state = SOFT_BRAKE
-                else:
-                    self.state = self._non_braking_state(v)
-        elif self.state == SOFT_BRAKE:
-            if ttc < self.t_on_hard:
-                self.state = HARD_BRAKE
-            elif ttc > self.t_off_soft:
-                self.state = self._non_braking_state(v)
-        else:
-            if ttc < self.t_on_hard:
-                self.state = HARD_BRAKE
-            elif ttc < self.t_on_soft:
-                self.state = SOFT_BRAKE
-            else:
-                self.state = self._non_braking_state(v)
-
-    def _non_braking_state(self, v: float) -> str:
-        if self.v_target is not None and self.a_recover > 0 and v < self.v_target - 1e-6:
-            return RECOVER
-        return CRUISE
 
     def decide_accel(self, ttc: float, *, v: float, dt: float) -> tuple[str, float]:
-        if not (math.isfinite(v) and v >= 0 and math.isfinite(dt) and dt > 0):
-            raise ValueError("Require nonnegative finite speed v and positive finite dt.")
+        if math.isnan(ttc) or ttc < 0:
+            raise ValueError("TTC must be nonnegative or positive infinity.")
+        if not math.isfinite(v) or v < 0 or not math.isfinite(dt) or dt <= 0:
+            raise ValueError("Require nonnegative finite speed and positive finite dt.")
         if self.v_target is None:
-            self.v_target = float(v)
-        self._update_stage(ttc, v)
-
-        if self.state == HARD_BRAKE:
-            target_a, max_j = -self.a_hard, self.jerk_hard
-        elif self.state == SOFT_BRAKE:
-            target_a, max_j = -self.a_soft, self.jerk_soft
-        elif self.state == RECOVER:
-            target_a, max_j = self.a_recover, self.jerk_soft
+            self.v_target = v
+        if ttc < self.t_on_hard or (self.state == HARD_BRAKE and ttc <= self.t_off_hard):
+            self.state = HARD_BRAKE
+        elif ttc < self.t_on_soft or (is_braking_action(self.state) and ttc <= self.t_off_soft):
+            self.state = SOFT_BRAKE
         else:
-            target_a, max_j = 0.0, self.jerk_soft
+            self.state = RECOVER if self.a_recover > 0 and v < self.v_target - 1e-6 else CRUISE
 
-        max_da = max_j * dt
-        a = max(self.prev_a - max_da, min(self.prev_a + max_da, target_a))
-        if v <= 0.0 and a < 0.0:
-            a = 0.0
-        elif a > 0.0 and self.v_target is not None and v + a * dt > self.v_target:
-            a = max(0.0, (self.v_target - v) / dt)
-        self.prev_a = float(a)
-        return self.state, float(a)
+        target = {
+            HARD_BRAKE: -self.a_hard,
+            SOFT_BRAKE: -self.a_soft,
+            RECOVER: self.a_recover,
+            CRUISE: 0.0,
+        }[self.state]
+        step = (self.jerk_hard if self.state == HARD_BRAKE else self.jerk_soft) * dt
+        a = max(self.prev_a - step, min(target, self.prev_a + step))
+        release_step = self.jerk_soft * dt
+        if a < 0:
+            a = max(a, -_speed_limit_accel(v, dt, release_step))
+        elif a > 0:
+            a = min(a, _speed_limit_accel(max(0.0, self.v_target - v), dt, release_step))
+        self.prev_a = a
+        return self.state, a
 ```
 
 ---
