@@ -101,6 +101,8 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 | Q4 | 碰撞后仿真是否继续？现在会继续跑，`min_dist` 不受影响，但 timeline 图会误导 | 画图时在 `collision_t` 处截断；不改仿真语义 | C |
 | Q5 | 阈值网格与参数网格的范围 | 阈值 {0.5, 1.0, 1.5, 2.0, 2.5, 3.0} s；参数网格由 A 定，D 只要求 benign 与 dangerous 都 ≥ 20% | A |
 
+Q2 实测（2026-11-23，`experiments/check_label_window.py`，未改任何标签）：exp02 的 53 个 benign 里有 6 个在 15–19 s 之间接触，其中 3 个在 15.00–15.14 s 接触，四个系统都在 13.1–13.3 s 刹车并被记为误刹。Oracle 的 3 例误刹全部来自这 3 个场景。quick 边界网格 11 个 benign 无此情况，完整网格 101 个 benign 里有 6 个。数字与拆分见 [results.md](results.md)；评分窗口是否调整仍待 A、C 决定。
+
 ## 7. 验收标准（对应 spec v3 里程碑）
 
 | 里程碑 | D 的验收 |
@@ -109,6 +111,8 @@ D **不**实现场景、预测或仿真逻辑；发现上游问题时提 issue �
 | **M1（W9）** | exp05 lead time 图 + exp02 trade-off 初版；benign 与 dangerous 均非空，误报率不恒为 0 |
 | **M2（W11）** | exp03 四边界图定稿，报告两个差值；全部实验 `--quick` < 5 min；图与 CSV 一一对应 |
 | **M3（W12）** | 报告"实验结果 / 局限"节；每个结论按 claim → evidence（图号）→ limitation 写 |
+
+M3 草稿见 [results.md](results.md)（quick 模式，F2 / F3 / F4）；复现步骤见 [reproducibility.md](reproducibility.md)。
 
 ## 8. 给 proposal 用的 Evidence & Evaluation 草稿
 

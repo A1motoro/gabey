@@ -103,7 +103,7 @@ src/pbs/
   demo/           本地浏览器单场景多系统对比
 experiments/      一个实验一个脚本，产出 outputs/figures/
 tests/            pytest
-docs/             interfaces / scenarios / d-baseline / ai_disclosure / contributions
+docs/             interfaces / scenarios / d-baseline / results / reproducibility / ai_disclosure / contributions
 data/             不入库（见「数据说明」）
 ```
 
@@ -157,7 +157,7 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 | `exp00_lateral_accel.png` | quintic 的 y/ẏ/ÿ + 横向加速度过滤（最短换道时长 2.60 s） |
 | `exp00_danger_map.png` | 96 个场景的 no-braking danger map（四边界图的底板） |
 
-四边界、trade-off 和 lead time 的 `--quick` 结果见 [D 的评估说明](docs/d-baseline.md) §9。
+四边界、trade-off 和 lead time 的 `--quick` 结果见 [D 的评估说明](docs/d-baseline.md) §9；按 claim → evidence → limitation 写的结果与局限见 [docs/results.md](docs/results.md)，复现步骤见 [docs/reproducibility.md](docs/reproducibility.md)。
 
 ## Limitations
 
