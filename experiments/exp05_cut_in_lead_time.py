@@ -3,7 +3,8 @@
 For each ``make_scenario("cut_in")`` on the boundary grid:
 brake_onset(Reactive) − brake_onset(CV / CTRV), at one shared threshold.
 Defined only when both systems brake. Scenarios where only one side brakes
-are counted, not dropped. Output: outputs/figures/exp05_lead_time.png
+are counted, not dropped. Onsets are taken over the whole 19 s run; the summary counts
+those after the 15 s decision window. Output: outputs/figures/exp05_lead_time.png
 """
 
 import argparse
@@ -38,7 +39,7 @@ def main():
         "--from-csv", type=Path, default=None, help="redraw the figure from a saved matrix"
     )
     args = parser.parse_args()
-    sim_kwargs, policy_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
+    sim_kwargs, matrix_kwargs, meta = experiment_config(legacy_l1=args.legacy_l1)
     csv_path = ROOT / "outputs/logs/exp05.csv"
     figure_path = ROOT / "outputs/figures/exp05_lead_time.png"
     summary_path = ROOT / "outputs/logs/exp05_summary.json"
@@ -51,7 +52,7 @@ def main():
             scenarios,
             [THRESHOLD],
             sim_kwargs=sim_kwargs,
-            **policy_kwargs,
+            **matrix_kwargs,
         )
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(csv_path, index=False)
@@ -85,12 +86,21 @@ def main():
         "median_lead_time_s": medians,
         "median_lead_time_when_predictive_is_earlier_s": earlier_medians,
         "counts": counts,
+        "brake_onsets_after_decision_window": _late_onsets(frame),
         "csv": str(csv_path),
         "figure": str(figure_path),
     }
     write_json(summary_path, summary)
     print(json.dumps(summary, indent=2, default=str))
     print(f"Artifacts: {figure_path.resolve()}")
+
+
+def _late_onsets(frame: pd.DataFrame) -> int | None:
+    """Lead times use the first brake of the whole run; this counts those after 15 s."""
+    if "decision_duration" not in frame.columns:
+        return None
+    onset = frame["brake_onset_t"].astype(float)
+    return int((onset >= frame["decision_duration"].astype(float) - 1e-9).sum())
 
 
 def _plot(leads: pd.DataFrame, path: Path) -> None:

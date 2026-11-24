@@ -49,7 +49,7 @@ CARLA / ROS / Docker / GPU；perception；横向控制 (steering)；LSTM / Trans
 
 ### 1.5 关键定义：False brake（counterfactual）
 
-同一场景跑 `NeverBrakePolicy`：不碰撞 → 该场景 **benign**；benign 场景中任何刹车都是 false brake。场景集必须包含"看起来危险但实际安全"的 cut-in（如 rel_v ≤ 0、大 gap_d），否则误报率恒为 0。
+同一场景跑 `NeverBrakePolicy`。D 的 L2 比较用两个窗口（2026-11-24，A、C 同意）：15 s 内接触为 **dangerous**；15 s 之后、19 s 之内接触为 **late contact**，不进入碰撞率或误刹率；19 s 内不接触为 **benign**。benign 场景里，前 15 s 内下达的刹车是 false brake。场景集必须包含"看起来危险但实际安全"的 cut-in（如 rel_v ≤ 0、大 gap_d），否则误报率恒为 0。
 
 ## 2. Modules
 

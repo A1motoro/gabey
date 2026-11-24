@@ -60,8 +60,12 @@ def brake_activity(log: SimLog) -> dict:
     }
 
 
-def evaluate(log: SimLog, benign: bool) -> dict:
-    """benign: from pbs.eval.counterfactual.is_benign(scenario), computed once per scenario."""
+def evaluate(log: SimLog, benign: bool, decision_end: float | None = None) -> dict:
+    """benign: from pbs.eval.counterfactual.is_benign(scenario), computed once per scenario.
+
+    ``decision_end``: only a brake commanded before this time counts as a false brake.
+    ``brake_onset_t`` is the first brake of the whole run either way.
+    """
     end = log.executed_steps if log.executed_steps is not None else len(log.t)
     contact = log.first_collision_t
     onset = next(
@@ -72,7 +76,7 @@ def evaluate(log: SimLog, benign: bool) -> dict:
         ),
         None,
     )
-    braked = onset is not None
+    braked = onset is not None and (decision_end is None or onset < decision_end - 1e-9)
     min_dist_until_contact = (
         log.min_dist_until_contact if log.min_dist_until_contact is not None else log.min_dist
     )

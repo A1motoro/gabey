@@ -124,7 +124,7 @@ python examples/cut_in_demo.py
 
 - **TTC (time-to-collision)**：在预测时域内，ego 与 agent 的预测车身首次发生面积重叠 的时间；无冲突为 `inf`。
 - **Reactive vs Predictive**：Reactive 只看本车道内目标的纵向接近；Predictive 外推所有目标的 2D（含横向）运动。两者之差 = 提前察觉切入的 **lead time**。
-- **Counterfactual false brake**：同一场景下若"永不刹车"也不会碰撞，则该场景 benign，其中任何刹车都是误报。
+- **Counterfactual false brake**：D 的 L2 比较里，无制动在 19 s 内不碰撞的场景是 benign，其中前 15 s 内的刹车是误报；15 s 内碰撞的是 dangerous。介于两者之间的 late contact 不进入这两个比率。
 - **Receding horizon**：每个仿真步都重新预测，不复用上一步结果。
 - **Log replay**：agent 按日志轨迹回放，不响应 ego；ego 自主仿真，因此能响应刹车决策。
 - **ADE / FDE**：预测轨迹与真值的平均 / 终点位移误差。

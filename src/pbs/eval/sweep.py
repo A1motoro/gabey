@@ -1,7 +1,7 @@
 """M4 — experiment matrix. Owner: D.
 
 One row per ``run_sim``. Trade-off curves, failure boundaries, and lead times are
-groupbys of that table. ``is_benign`` is cached per scenario and uses the same
+groupbys of that table. The never-brake label is cached per scenario and uses the same
 ``sim_kwargs`` as the measured runs.
 """
 
@@ -12,7 +12,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-from pbs.eval.counterfactual import is_benign
+from pbs.eval.counterfactual import BENIGN, DANGEROUS, LATE_CONTACT, never_brake_label
 from pbs.eval.metrics import evaluate
 from pbs.sim.policy import HysteresisPolicy, TTCThresholdPolicy
 from pbs.sim.simulator import DEFAULT_A_BRAKE, run_sim
@@ -60,13 +60,23 @@ def run_matrix(
     policy_kind: str = "threshold",
     hysteresis_gap: float = 1.0,
     a_brake: float = DEFAULT_A_BRAKE,
+    decision_duration: float | None = None,
 ) -> pd.DataFrame:
     """Run ``systems × scenarios × thresholds × latencies``.
 
     Columns follow ``docs/d-baseline.md`` and ``docs/l2-baseline.md``: scenario id,
     kind, scalar scenario params, system, policy, threshold (= t_on), t_on, t_off,
-    latency, geometry, horizon, benign, collision, first_collision_t, false_brake,
-    min_dist, min_dist_until_contact, brake_onset_t, seed, git_rev.
+    latency, geometry, horizon, label, benign, never_brake_contact_t, decision_duration,
+    outcome_duration, collision, first_collision_t, false_brake, min_dist,
+    min_dist_until_contact, brake_onset_t, seed, git_rev.
+
+    ``decision_duration`` splits the run into two windows. Every simulation still runs
+    for ``sim_kwargs["duration"]``, and ``collision`` covers all of it. ``false_brake``
+    counts only a brake commanded before ``decision_duration``, and only in a scenario
+    with no never-brake contact in the whole run. A scenario whose never-brake contact
+    comes after ``decision_duration`` is ``late_contact``: ``benign`` is false, and
+    ``tradeoff`` and ``rescue_rate`` leave it out of both denominators. Without
+    ``decision_duration`` there is one window and no ``late_contact``.
     """
     if not scenarios:
         raise ValueError("scenarios is empty")
@@ -82,13 +92,15 @@ def run_matrix(
     horizon = int(sim_kwargs.get("horizon", 30))
     param_keys = _param_keys(scenarios)
     revision = _git_rev()
-    benign_cache: dict[str, bool] = {}
+    decision_end = None if decision_duration is None else float(decision_duration)
+    label_cache: dict[str, tuple[str, float | None]] = {}
     rows = []
     for scenario in scenarios:
         sid = scenario_id(scenario)
-        if sid not in benign_cache:
-            benign_cache[sid] = bool(is_benign(scenario, **sim_kwargs))
-        benign = benign_cache[sid]
+        if sid not in label_cache:
+            label_cache[sid] = never_brake_label(scenario, decision_end, **sim_kwargs)
+        label, never_brake_contact = label_cache[sid]
+        benign = label == BENIGN
         params = {key: _scalar(scenario.params.get(key)) for key in param_keys}
         for name in names:
             assessor = make_system(name)
@@ -96,7 +108,8 @@ def run_matrix(
                 policy = _make_policy(policy_kind, t_on, t_off, float(a_brake))
                 for latency in latency_list:
                     log = run_sim(scenario, assessor, policy, latency=latency, **sim_kwargs)
-                    metrics = evaluate(log, benign)
+                    metrics = evaluate(log, benign, decision_end)
+                    outcome_end = float(log.t[-1])
                     onset = metrics["brake_onset_t"]
                     contact = metrics["first_collision_t"]
                     rows.append(
@@ -112,7 +125,15 @@ def run_matrix(
                             "latency": latency,
                             "geometry": geometry,
                             "horizon": horizon,
+                            "label": label,
                             "benign": benign,
+                            "never_brake_contact_t": (
+                                np.nan if never_brake_contact is None else never_brake_contact
+                            ),
+                            "decision_duration": (
+                                outcome_end if decision_end is None else decision_end
+                            ),
+                            "outcome_duration": outcome_end,
                             "collision": bool(metrics["collision"]),
                             "first_collision_t": np.nan if contact is None else float(contact),
                             "false_brake": bool(metrics["false_brake"]),
@@ -127,12 +148,15 @@ def run_matrix(
 
 
 def tradeoff(df: pd.DataFrame) -> pd.DataFrame:
-    """Collision rate on dangerous rows and false-brake rate on benign rows."""
+    """Collision rate on dangerous rows and false-brake rate on benign rows.
+
+    ``late_contact`` rows are in neither rate; ``n_late_contact`` counts them.
+    """
     frame = _normalize(df)
     rows = []
     grouped = frame.groupby(["system", "threshold", "latency"], sort=False)
     for (system, threshold, latency), group in grouped:
-        dangerous = group.loc[~group["benign"]]
+        dangerous = group.loc[_is_dangerous(group)]
         benign = group.loc[group["benign"]]
         rows.append(
             {
@@ -141,6 +165,7 @@ def tradeoff(df: pd.DataFrame) -> pd.DataFrame:
                 "latency": float(latency),
                 "n_dangerous": int(len(dangerous)),
                 "n_benign": int(len(benign)),
+                "n_late_contact": int(len(group) - len(dangerous) - len(benign)),
                 "collision_rate": (
                     float(dangerous["collision"].mean()) if len(dangerous) else np.nan
                 ),
@@ -187,11 +212,12 @@ def failure_boundary(df: pd.DataFrame, system: str, threshold=None, latency=None
     for column in ("gap_d", "rel_v"):
         if column not in sub.columns:
             raise ValueError(f"failure_boundary requires a {column} column")
+    sub = sub.assign(dangerous=_is_dangerous(sub))
     cells = sub.groupby(["gap_d", "rel_v"], as_index=False).agg(
-        collision=("collision", "max"), benign=("benign", "min")
+        collision=("collision", "max"), benign=("benign", "min"), dangerous=("dangerous", "max")
     )
-    cells["collision"] = cells["collision"].astype(bool)
-    cells["benign"] = cells["benign"].astype(bool)
+    for column in ("collision", "benign", "dangerous"):
+        cells[column] = cells[column].astype(bool)
     return cells.sort_values(["rel_v", "gap_d"]).reset_index(drop=True)
 
 
@@ -210,10 +236,48 @@ def rescue_rate(df: pd.DataFrame, system: str, threshold=None, latency=None) -> 
     rescue(Oracle) - rescue(CV) is the cost of prediction error.
     """
     cells = failure_boundary(df, system, threshold, latency)
-    dangerous = cells.loc[~cells["benign"]]
+    dangerous = cells.loc[cells["dangerous"]]
     if dangerous.empty:
         return float("nan")
     return float(1.0 - dangerous["collision"].mean())
+
+
+def late_contact_outcomes(df: pd.DataFrame) -> pd.DataFrame:
+    """What each system did in the ``late_contact`` scenarios, which no rate includes.
+
+    ``braked_in_window`` counts brakes commanded before ``decision_duration``.
+    """
+    frame = _normalize(df)
+    columns = [
+        "system",
+        "threshold",
+        "latency",
+        "n_late_contact",
+        "braked_in_window",
+        "braked_later",
+        "collided",
+    ]
+    if "label" not in frame.columns:
+        return pd.DataFrame(columns=columns)
+    late = frame.loc[frame["label"] == LATE_CONTACT]
+    rows = []
+    for (system, threshold, latency), group in late.groupby(
+        ["system", "threshold", "latency"], sort=False
+    ):
+        onset = group["brake_onset_t"].astype(float)
+        in_window = onset < group["decision_duration"].astype(float) - 1e-9
+        rows.append(
+            {
+                "system": system,
+                "threshold": float(threshold),
+                "latency": float(latency),
+                "n_late_contact": int(len(group)),
+                "braked_in_window": int(in_window.sum()),
+                "braked_later": int((onset.notna() & ~in_window).sum()),
+                "collided": int(group["collision"].sum()),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def lead_times(df: pd.DataFrame, reference: str = "reactive") -> pd.DataFrame:
@@ -283,6 +347,13 @@ def _subset(df: pd.DataFrame, system: str, threshold, latency) -> pd.DataFrame:
     if sub.empty:
         raise ValueError(f"no rows for system={system!r}")
     return sub
+
+
+def _is_dangerous(frame: pd.DataFrame) -> pd.Series:
+    """Tables written before the ``label`` column have two classes: dangerous = not benign."""
+    if "label" in frame.columns:
+        return frame["label"] == DANGEROUS
+    return ~_as_bool(frame["benign"])
 
 
 def _normalize(df: pd.DataFrame) -> pd.DataFrame:

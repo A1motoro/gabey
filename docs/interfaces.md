@@ -103,7 +103,7 @@ policy.decide(ttc) → brake / cruise
 
 ### M1 补充约定（2026-10，A）
 
-- 合成 `Scenario.params` 必含 `duration`（默认 15 s）与 `peak_lat_acc`。闭环实验显式传入评分时长；`run_sim` 默认 10 s。若为 Oracle 生成额外未来轨迹，仍使用[实验设定的评分时长](l2-baseline.md#c-的复现配置与-d-的接入)。
+- 合成 `Scenario.params` 必含 `duration`（默认 15 s，这是日志长度）与 `peak_lat_acc`。闭环实验显式传入仿真时长；`run_sim` 默认 10 s。D 的 L2 比较仿真 19 s、日志 23 s：刹车在前 15 s 计分，碰撞看到 19 s（[l2-baseline.md](l2-baseline.md)）。若为 Oracle 生成额外未来轨迹，仍使用[实验设定的评分时长](l2-baseline.md#c-的复现配置与-d-的接入)。
 - 合成 `Scenario.agents` 恒为 1 个元素；`agent_id ∈ {"cutter", "lead", "crosser"}`。
 - 合成 `Scenario.kind ∈ {"cut_in", "lead_brake", "crossing"}`；`make_scenario` 对未知 kind / 超限横向加速度 / 反向目标速度 **抛 `ValueError`**，不静默裁剪。真实 Waymo kind 单独见前文 L3 约定。
 - `load_toy()` 不含 ego（`agent_id` = 文件 stem）；ego 用新增的 `load_toy_ego()`。
