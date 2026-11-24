@@ -4,6 +4,7 @@
 
 | 日期 | 成员 | 工具 | 用途 | 涉及文件 | 人工检查方式 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-24 | A | OpenAI Codex | 按 PR #16 两轮评审归档旧状态快照、修正验收环境前提；缺少课程 CSV 时只跳过两项外部集成测试，新增合成 CSV 单元测试 | `docs/status.md`、`docs/archive/status_2026-11-23_2130.md`、case study、README、`tests/test_data.py` | 有课程数据 408 passed；纯 Git 克隆无课程 CSV / TFRecord：406 passed、2 skipped、0 failed，exp07 可复现；Ruff 通过。CSV 单元夹具明确标作合成，不充当真实数据证据。人工复核仍由 A 完成 |
 | 2026-11-23 | A | OpenAI Codex | 解决 PR #16 与 main 的 README / AI 声明 / 接口 / spec 冲突，保留双方贡献；显式固定 L3 圆形参数、同步已实现预测器状态、添加 Oracle 真值覆盖检查 | 四个冲突文档、exp07、审计脚本、L3 测试与报告 | 合并 main a3f91cb 后 389 passed；Ruff 通过；Reactive/CV 冻结时刻一致；可选 CA 接入通过，Oracle 未来不足明确跳过。人工代码与配置复核仍由 A 完成 |
 | 2026-11-23 | A | OpenAI Codex | 完成 L3 Waymo 原始读取、官方 SDC 索引、连续有效帧筛选、固定坐标变换、12 个快照、Reactive/CV 与 ADE/FDE、40 候选全审计、危险与误刹说明案例、报告和交接；修正既有 demo 测试的 Windows 临时目录 / 端口预留 / UTF-8 解码 | `pbs/data/womd.py`、loader、vendor/descriptor、scripts、exp07、NPZ、L3 测试与文档 | AI 实测 2321 记录两处 CRC32C、12 快照 SHA256、NPZ 禁止 protobuf/原始数据访问时可读、39 项新增测试、三图视觉核验；完整测试与限制见 `L3_waymo_case_study.md`。首批和按结果挑选的说明案例分开记录，未虚构 CA/Oracle/GRU 结果。人工逐行审阅、报告解释与引用复核仍由 A 完成，未声称已人工验收 |
 | 2026-11-18 | P（华华） | OpenAI Codex | 同步合并 PR #8 后的 main，实现 P L3 LR 位置窗口拟合，增加 exp01 五模型对比并通过 PR 合并 | `src/pbs/prediction/regression.py`、`tests/test_l3_predictors.py`、`experiments/exp01_predictor_ade.py`、README、接口追加约定、L3 验证报告、贡献记录 | LR 专项 32 passed；解析直线、噪声、窗口隔离、延迟及既有 D 矩阵验证；回归与实测误差见 `docs/l3-validation.md`。人工复核待 P/C，未声称真实交通安全收益 |

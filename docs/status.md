@@ -15,12 +15,19 @@ L3 默认实验仍比较 Reactive/CV，并显式使用圆形兼容参数；CA �
 [L3_A_handoff.md](L3_A_handoff.md)。原始分片继续被 ignore；小型 `exp07` 图表已允许纳入代码包。
 此前 demo 测试的 Windows 路径、端口预留与子进程编码问题已在测试侧修正。
 
-此前合并 main 到 L3 分支时，本机具备课程 toy CSV，实测 389 passed（38.60 s）。
-组员在当时干净克隆上实测 387 passed / 2 failed：两项失败来自缺少外部课程 CSV。
-本次将这两项外部数据集成测试改为缺少 CSV 时明确 skip，并新增无需下载数据的 CSV 单元测试。
-课程文件存在但损坏时仍然失败，不会把解析错误静默跳过。
-验证计数会随 main 更新与可选依赖变化，以本次实际命令输出为准。
+## 本次验收（2026-11-24）
 
+基于最新 main `e7453f1` 的评审后续修复：
+
+| 环境 | 命令 | 本机实测 |
+| --- | --- | --- |
+| 有外部课程 toy CSV；基础与 `[womd]` 依赖已安装 | `python -m pytest -q -p no:cacheprovider` | **408 passed**（67.88 s） |
+| 纯 Git 克隆；无 toy CSV、无原始 TFRecord；同一依赖环境 | 同上 | **406 passed / 2 skipped**（51.22 s），0 failed |
+
+两项 skip 只针对外部课程 CSV 的集成检查。自包含 CSV 单元测试、缺目录报错测试、
+L3 快照和真实案例测试仍运行；存在但损坏的 CSV 不会被跳过。
+干净克隆 `python experiments/exp07_real_clip.py` 运行成功，默认圆形兼容实验保持
+Reactive 3.2 s / CV 2.9 s 和误刹 4.8 s 的结果。`ruff check .` 与差异空白检查通过。
 
 ## 环境前提与历史归档
 
