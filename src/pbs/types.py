@@ -39,6 +39,18 @@ class Scenario:
     lane_width: float = 3.5  # m；Reactive baseline 用它判定 agent 是否在本车道内
 
 
+@dataclass(frozen=True)
+class FrameDecision:
+    frame_id: int
+    effective_ttc: float  # NaN when all expected targets are unknown; +inf means valid clear.
+    mode_override: str
+    source: str
+    missing_agents: tuple[str, ...]
+    dropped_stale_results: int
+    elapsed_s: float
+    agent_sources: dict[str, str] = field(default_factory=dict)
+
+
 @dataclass
 class SimLog:
     """一次仿真的完整输出"""
@@ -57,6 +69,7 @@ class SimLog:
     first_collision_t: float | None = None  # First contact under the swept linear approximation.
 
     min_dist_until_contact: float | None = None  # Minimum centre distance through first contact.
+    failsafe_decisions: list[FrameDecision] | None = None
 
 
 # ---- P ↔ C contract: risk assessment -------------------------------------------------

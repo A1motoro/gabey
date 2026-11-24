@@ -18,8 +18,17 @@ from pbs.sim.collision import (
     swept_contact_fraction,
     swept_min_distance,
 )
+from pbs.sim.failsafe import FrameFailsafeCoordinator
 from pbs.sim.observation import ObservationModel
-from pbs.sim.policy import BRAKE, CRUISE, HARD_BRAKE, RECOVER, SOFT_BRAKE
+from pbs.sim.policy import (
+    BRAKE,
+    COAST_ZERO,
+    CRUISE,
+    HARD_BRAKE,
+    RECOVER,
+    SOFT_BRAKE,
+    StagedBrakingPolicy,
+)
 from pbs.sim.timing import ComputationDelayModel
 from pbs.types import RiskContext, Scenario, SimLog
 from pbs.utils import _cum_arclength, history_until, path_heading, path_point, state_at
@@ -44,7 +53,9 @@ def advance_kinematics(
     return v * h + 0.5 * a * h * h, np.maximum(0.0, v + a * h)
 
 
-def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brake):
+def _validate(
+    scenario, duration, horizon, r_safe, latency, collision_dt, a_brake, *, allow_missing=False
+):
     """Reject inputs that would otherwise silently clamp paths or replay endpoints."""
     dt = scenario.dt
     values = (dt, duration, latency, collision_dt, a_brake, scenario.lane_width)
@@ -88,9 +99,10 @@ def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brak
         if not agent.agent_id or agent.agent_id in ids:
             raise ValueError("Each agent must have a unique nonempty agent_id.")
         ids.add(agent.agent_id)
-        if agent.t[0] > -latency + 1e-9:
+        earliest_truth = 0.0 if allow_missing else -latency
+        if agent.t[0] > earliest_truth + 1e-9:
             raise MissingObservationError(
-                f"Agent {agent.agent_id!r}: provide history at or before {-latency:g} s."
+                f"Agent {agent.agent_id!r}: provide history at or before {earliest_truth:g} s."
             )
         if agent.t[-1] < duration - 1e-9:
             raise ValueError(f"Agent {agent.agent_id!r}: truth must cover duration={duration}.")
@@ -122,23 +134,70 @@ def run_sim(
     computation_delay_model: ComputationDelayModel | None = None,
     vehicle_length: float = VEHICLE_LENGTH,
     vehicle_width: float = VEHICLE_WIDTH,
+    failsafe_coordinator: FrameFailsafeCoordinator | None = None,
 ) -> SimLog:
     """Run one independent experiment using A's Scenario and P's RiskAssessor.
 
-    Missing prehistory raises MissingObservationError; it is never called safe.
+    With a failsafe coordinator its two channels supply risk and a staged policy
+    executes the decision. An observation model can return None or a causal subset
+    of the original samples to inject loss. Without T6, missing prehistory raises
+    MissingObservationError and observation timestamps must be preserved.
     The assessor must align delayed observations to ctx.t_now + (k+1)*dt.
     State rows include the terminal time. Only action[:executed_steps] is applied.
     Collision sweeps use <= collision_dt linear subintervals (an approximation
     for acceleration), also split at stopping times, path corners and truth knots.
     A collision is recorded permanently; this model does not simulate impacts.
     """
+    try:
+        return _run_sim(
+            scenario,
+            assessor,
+            policy,
+            duration,
+            horizon,
+            r_safe,
+            latency,
+            collision_dt,
+            observation_model,
+            computation_delay_model,
+            vehicle_length,
+            vehicle_width,
+            failsafe_coordinator,
+        )
+    finally:
+        if failsafe_coordinator is not None:
+            failsafe_coordinator.close()
+
+
+def _run_sim(
+    scenario,
+    assessor,
+    policy,
+    duration,
+    horizon,
+    r_safe,
+    latency,
+    collision_dt,
+    observation_model,
+    computation_delay_model,
+    vehicle_length,
+    vehicle_width,
+    failsafe_coordinator,
+):
     dt = scenario.dt
     a_brake = getattr(policy, "a_brake", DEFAULT_A_BRAKE)
     if not all(np.isfinite(d) and d > 0 for d in (vehicle_length, vehicle_width)):
         raise ValueError("Vehicle dimensions must be finite and positive.")
     dimensions = dict(vehicle_length=vehicle_length, vehicle_width=vehicle_width)
     steps, path, path_distances = _validate(
-        scenario, duration, horizon, r_safe, latency, collision_dt, a_brake
+        scenario,
+        duration,
+        horizon,
+        r_safe,
+        latency,
+        collision_dt,
+        a_brake,
+        allow_missing=failsafe_coordinator is not None,
     )
     n = steps + 1
     t = np.arange(n) * dt
@@ -149,7 +208,17 @@ def run_sim(
             reset(v_target=float(scenario.ego_start[3]))
         else:
             reset()
-    assessor.bind(scenario)
+    if failsafe_coordinator is None:
+        assessor.bind(scenario)
+    else:
+        if not isinstance(policy, StagedBrakingPolicy):
+            raise ValueError("T6 requires a StagedBrakingPolicy.")
+        failsafe_coordinator.bind(
+            scenario,
+            policy=policy,
+            base_latency=failsafe_coordinator.config.base_latency or latency,
+        )
+    decisions = [] if failsafe_coordinator is not None else None
 
     path_delta = np.diff(path, axis=0)
     path_angles = np.arctan2(path_delta[:, 1], path_delta[:, 0])
@@ -201,6 +270,7 @@ def run_sim(
             **dimensions,
             ego_future_heading=headings_at(s + v * dt * np.arange(1, horizon + 1)),
         )
+        histories = {}
         for agent in scenario.agents:
             true_xy = state_at(agent, t[k])
             min_dist = min(min_dist, float(np.linalg.norm(ego_xy - true_xy)))
@@ -218,18 +288,43 @@ def run_sim(
                 first_collision_t = float(t[k])
             history = history_until(agent, t[k] - latency)
             if not len(history.t):
+                if failsafe_coordinator is not None:
+                    histories[agent.agent_id] = None
+                    continue
                 raise MissingObservationError(f"No observable history for {agent.agent_id!r}.")
             if observation_model is not None:
                 reference_t = history.t.copy()
                 history = observation_model.observe(history, t_now=float(t[k]))
-                if history.agent_id != agent.agent_id or not np.array_equal(history.t, reference_t):
+                if failsafe_coordinator is not None:
+                    if history is not None and (
+                        history.agent_id != agent.agent_id
+                        or not np.all(np.isin(history.t, reference_t))
+                        or not np.all(np.diff(history.t) > 0)
+                    ):
+                        raise ValueError(
+                            "T6 observation must preserve identity and causal timestamps."
+                        )
+                elif (
+                    history is None
+                    or history.agent_id != agent.agent_id
+                    or not np.array_equal(history.t, reference_t)
+                ):
                     raise ValueError("Observation model must preserve agent ID and timestamps.")
+            if failsafe_coordinator is not None:
+                histories[agent.agent_id] = history
+                continue
             est = assessor.assess(ctx, history)
             if est.considered:
                 if np.isnan(est.ttc) or est.ttc < 0:
                     raise ValueError(f"Invalid TTC from assessor for {agent.agent_id!r}.")
                 ttc[k] = min(ttc[k], est.ttc)
 
+        if failsafe_coordinator is not None:
+            decision = failsafe_coordinator.step_frame(
+                k, ctx, histories, current_policy_mode=policy.state
+            )
+            decisions.append(decision)
+            ttc[k] = decision.effective_ttc
         if first_collision_t is None or first_collision_t == t[k]:
             min_until_contact = min(min_until_contact, min_dist)
         if k == steps:
@@ -237,8 +332,16 @@ def run_sim(
             action.append(action[-1] if action else CRUISE)
             break
         if callable(decide_accel):
-            act, a = decide_accel(ttc[k], v=v, dt=dt)
-            if act not in (CRUISE, RECOVER, SOFT_BRAKE, HARD_BRAKE, BRAKE) or not np.isfinite(a):
+            override = {"mode_override": decision.mode_override} if decisions is not None else {}
+            act, a = decide_accel(ttc[k], v=v, dt=dt, **override)
+            if act not in (
+                CRUISE,
+                RECOVER,
+                SOFT_BRAKE,
+                HARD_BRAKE,
+                BRAKE,
+                COAST_ZERO,
+            ) or not np.isfinite(a):
                 raise ValueError(f"Invalid acceleration policy output: {(act, a)!r}.")
         else:
             act = policy.decide(ttc[k])
@@ -329,6 +432,7 @@ def run_sim(
         float(min_dist),
         bool(collision),
         executed_steps=steps,
+        failsafe_decisions=decisions,
         first_collision_t=first_collision_t,
         min_dist_until_contact=min_until_contact,
     )

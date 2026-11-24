@@ -15,7 +15,8 @@ class ObservationModel(Protocol):
     a sample does not redraw its noise. Construct a fresh model per simulation.
     """
 
-    def observe(self, history: Trajectory, *, t_now: float) -> Trajectory: ...
+    # T6 also accepts missing packets and timestamp-preserving subsets.
+    def observe(self, history: Trajectory, *, t_now: float) -> Trajectory | None: ...
 
 
 class IdentityObservation:
