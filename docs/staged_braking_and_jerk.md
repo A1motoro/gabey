@@ -92,6 +92,7 @@ import math
 
 # 沿用 src/pbs/sim/policy.py 顶部常量：CRUISE, BRAKE = "cruise", "brake"
 SOFT_BRAKE, HARD_BRAKE, RECOVER = "soft_brake", "hard_brake", "recover"
+COAST_ZERO = "coast_zero"  # C-T6 缺测首帧撤去驱动力标签（is_braking_action 为 False）
 
 
 def is_braking_action(action: str) -> bool:
@@ -159,27 +160,43 @@ class StagedBrakingPolicy:
         self.state = CRUISE
         self.prev_a = 0.0
 
-    def decide_accel(self, ttc: float, *, v: float, dt: float) -> tuple[str, float]:
-        if math.isnan(ttc) or ttc < 0:
+    def brake_mode(self, ttc: float, previous: str) -> str:
+        """Brake demand with hysteresis, without advancing the actuator."""
+        if ttc < self.t_on_hard or (previous == HARD_BRAKE and ttc <= self.t_off_hard):
+            return HARD_BRAKE
+        if ttc < self.t_on_soft or (is_braking_action(previous) and ttc <= self.t_off_soft):
+            return SOFT_BRAKE
+        return CRUISE
+
+    def decide_accel(
+        self, ttc: float, *, v: float, dt: float, mode_override: str = "normal"
+    ) -> tuple[str, float]:
+        if mode_override == "normal" and (math.isnan(ttc) or ttc < 0):
             raise ValueError("TTC must be nonnegative or positive infinity.")
         if not math.isfinite(v) or v < 0 or not math.isfinite(dt) or dt <= 0:
             raise ValueError("Require nonnegative finite speed and positive finite dt.")
         if self.v_target is None:
             self.v_target = v
-        if ttc < self.t_on_hard or (self.state == HARD_BRAKE and ttc <= self.t_off_hard):
-            self.state = HARD_BRAKE
-        elif ttc < self.t_on_soft or (is_braking_action(self.state) and ttc <= self.t_off_soft):
-            self.state = SOFT_BRAKE
+        if mode_override == "normal":
+            mode = self.brake_mode(ttc, self.state)
+            if mode == CRUISE and self.a_recover > 0 and v < self.v_target - 1e-6:
+                mode = RECOVER
+        elif mode_override in (COAST_ZERO, SOFT_BRAKE, HARD_BRAKE):
+            mode = mode_override
         else:
-            self.state = RECOVER if self.a_recover > 0 and v < self.v_target - 1e-6 else CRUISE
+            raise ValueError(f"Invalid failsafe mode: {mode_override!r}")
+        self.state = mode
+        return self._apply_mode_accel(mode, v=v, dt=dt)
 
+    def _apply_mode_accel(self, mode: str, *, v: float, dt: float) -> tuple[str, float]:
         target = {
             HARD_BRAKE: -self.a_hard,
             SOFT_BRAKE: -self.a_soft,
             RECOVER: self.a_recover,
             CRUISE: 0.0,
-        }[self.state]
-        step = (self.jerk_hard if self.state == HARD_BRAKE else self.jerk_soft) * dt
+            COAST_ZERO: 0.0,
+        }[mode]
+        step = (self.jerk_hard if mode == HARD_BRAKE else self.jerk_soft) * dt
         a = max(self.prev_a - step, min(target, self.prev_a + step))
         release_step = self.jerk_soft * dt
         if a < 0:
