@@ -3,6 +3,7 @@
 import numpy as np
 
 from pbs.sim.collision import (
+    PEDESTRIAN_RADIUS,
     VEHICLE_LENGTH,
     VEHICLE_WIDTH,
     overlaps,
@@ -54,6 +55,8 @@ def assess_risk(
     ego_origin_heading: float | None = None,
     agent_origin_heading: float | None = None,
     swept: bool = False,
+    vehicle_length: float = VEHICLE_LENGTH,
+    vehicle_width: float = VEHICLE_WIDTH,
 ) -> RiskEstimate:
     """First forecast conflict with strict footprint overlap.
 
@@ -72,6 +75,8 @@ def assess_risk(
         raise ValueError("dt must be finite and positive")
     if swept and (ego_origin is None or agent_origin is None):
         raise ValueError("swept=True requires both ego_origin and agent_origin")
+    if not all(np.isfinite(d) and d > 0 for d in (vehicle_length, vehicle_width)):
+        raise ValueError("Vehicle dimensions must be finite and positive")
     if not len(ego):
         if r_safe is not None and (not np.isfinite(r_safe) or r_safe < 0):
             raise ValueError("r_safe must be finite and non-negative")
@@ -89,8 +94,10 @@ def assess_risk(
             return RiskEstimate(ttc=(k + 1) * dt, conflict_step=k)
         p_start = ego[0] if ego_origin is None else np.asarray(ego_origin, dtype=float)
         q_start = agent[0] if agent_origin is None else np.asarray(agent_origin, dtype=float)
-        if p_start.shape != (2,) or q_start.shape != (2,) or not (
-            np.isfinite(p_start).all() and np.isfinite(q_start).all()
+        if (
+            p_start.shape != (2,)
+            or q_start.shape != (2,)
+            or not (np.isfinite(p_start).all() and np.isfinite(q_start).all())
         ):
             raise ValueError("origin positions must be finite (2,) arrays")
         ego_pts = np.vstack((p_start, ego))
@@ -117,16 +124,19 @@ def assess_risk(
         if np.shape(heading) not in ((), (len(ego),)) or not np.isfinite(heading).all():
             raise ValueError("headings must be finite scalars or one angle per forecast step")
 
+    dimensions = dict(vehicle_length=vehicle_length, vehicle_width=vehicle_width)
     if not swept:
-        mask = overlaps(agent - ego, ego_heading, agent_heading, pedestrian)
+        mask = overlaps(agent - ego, ego_heading, agent_heading, pedestrian, **dimensions)
         conflicts = np.flatnonzero(mask)
         if not len(conflicts):
             return RiskEstimate()
         k = int(conflicts[0])
         return RiskEstimate(ttc=(k + 1) * dt, conflict_step=k)
 
-    if p_start.shape != (2,) or q_start.shape != (2,) or not (
-        np.isfinite(p_start).all() and np.isfinite(q_start).all()
+    if (
+        p_start.shape != (2,)
+        or q_start.shape != (2,)
+        or not (np.isfinite(p_start).all() and np.isfinite(q_start).all())
     ):
         raise ValueError("origin positions must be finite (2,) arrays")
     for heading in (ego_origin_heading, agent_origin_heading):
@@ -137,7 +147,8 @@ def assess_risk(
     agent_pts = np.vstack((q_start, agent))
     ego_mid, ego_end = _segment_headings(ego_heading, ego_origin_heading, len(ego))
     agent_mid, agent_end = _segment_headings(agent_heading, agent_origin_heading, len(ego))
-    broad_limit = float(np.hypot(VEHICLE_LENGTH, VEHICLE_WIDTH))
+    diagonal = np.hypot(vehicle_length, vehicle_width)
+    broad_limit = diagonal / 2 + PEDESTRIAN_RADIUS if pedestrian else diagonal
     for k in range(len(ego)):
         dist = swept_min_distance(ego_pts[k], ego_pts[k + 1], agent_pts[k], agent_pts[k + 1])
         if dist <= broad_limit:
@@ -150,6 +161,7 @@ def assess_risk(
                 ego_heading=float(ego_mid[k]),
                 agent_heading=float(agent_mid[k]),
                 pedestrian=pedestrian,
+                **dimensions,
             )
             if fraction is not None:
                 return RiskEstimate(ttc=float((k + fraction) * dt), conflict_step=k)
@@ -159,6 +171,7 @@ def assess_risk(
                     float(ego_end[k]),
                     float(agent_end[k]),
                     pedestrian,
+                    **dimensions,
                 )
             ):
                 return RiskEstimate(ttc=float((k + 1) * dt), conflict_step=k)

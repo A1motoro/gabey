@@ -51,15 +51,19 @@ def _cum_arclength(path: np.ndarray) -> np.ndarray:
     return np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))])
 
 
-def path_point(path: np.ndarray, s: float) -> np.ndarray:
+def path_point(
+    path: np.ndarray, s: float | np.ndarray, *, cum: np.ndarray | None = None
+) -> np.ndarray:
     """Point at arc length s along polyline path (M, 2); clamps to the ends."""
-    cum = _cum_arclength(path)
-    return np.array([np.interp(s, cum, path[:, 0]), np.interp(s, cum, path[:, 1])])
+    if cum is None:
+        cum = _cum_arclength(path)
+    return np.stack((np.interp(s, cum, path[:, 0]), np.interp(s, cum, path[:, 1])), axis=-1)
 
 
-def path_heading(path: np.ndarray, s: float) -> float:
+def path_heading(path: np.ndarray, s: float, *, cum: np.ndarray | None = None) -> float:
     """Heading [rad] of the path segment containing arc length s."""
-    cum = _cum_arclength(path)
+    if cum is None:
+        cum = _cum_arclength(path)
     i = int(np.clip(np.searchsorted(cum, s, side="right") - 1, 0, len(path) - 2))
     d = path[i + 1] - path[i]
     return float(np.arctan2(d[1], d[0]))

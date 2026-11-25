@@ -39,6 +39,18 @@ class Scenario:
     lane_width: float = 3.5  # m；Reactive baseline 用它判定 agent 是否在本车道内
 
 
+@dataclass(frozen=True)
+class FrameDecision:
+    frame_id: int
+    effective_ttc: float  # NaN when all expected targets are unknown; +inf means valid clear.
+    mode_override: str
+    source: str
+    missing_agents: tuple[str, ...]
+    dropped_stale_results: int
+    elapsed_s: float
+    agent_sources: dict[str, str] = field(default_factory=dict)
+
+
 @dataclass
 class SimLog:
     """一次仿真的完整输出"""
@@ -48,7 +60,7 @@ class SimLog:
     ego_y: np.ndarray
     ego_v: np.ndarray
     ego_a: np.ndarray
-    action: list[str]  # 每步 'cruise' / 'brake'
+    action: list[str]  # Staged policies also report soft_brake, hard_brake and recover.
     ttc: np.ndarray  # 每步估计的 TTC（所有 agent 取 min），无冲突为 inf
     min_dist: float
     collision: bool
@@ -57,6 +69,7 @@ class SimLog:
     first_collision_t: float | None = None  # First contact under the swept linear approximation.
 
     min_dist_until_contact: float | None = None  # Minimum centre distance through first contact.
+    failsafe_decisions: list[FrameDecision] | None = None
 
 
 # ---- P ↔ C contract: risk assessment -------------------------------------------------
@@ -77,6 +90,8 @@ class RiskContext:
     dt: float
     r_safe: float | None = None  # Explicit value selects the historical circle model.
     ego_future_heading: np.ndarray | None = None
+    vehicle_length: float = 5.0
+    vehicle_width: float = 2.5
 
 
 @dataclass

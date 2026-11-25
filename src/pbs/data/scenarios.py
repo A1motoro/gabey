@@ -169,7 +169,7 @@ def _ego_path(v_ego: float, duration: float) -> np.ndarray:
 def _base_params(**params) -> dict:
     """JSON/DataFrame friendly record of every resolved parameter (for run_matrix)."""
     return {
-        key: (float(value) if isinstance(value, (int, float, np.floating))
+        key: (float(value) if isinstance(value, int | float | np.floating)
               and not isinstance(value, bool) else value)
         for key, value in params.items()
     }
