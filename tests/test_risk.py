@@ -191,3 +191,142 @@ def test_assess_risk_swept_requires_origins():
     agent = np.array([[0.0, 5.0], [0.0, 4.0]])
     with pytest.raises(ValueError, match="ego_origin and agent_origin"):
         assess_risk(ego, agent, dt=0.1, swept=True)
+
+
+def test_assess_risk_vehicle_width_passthrough_and_narrow_clearance():
+    # Two parallel cars separated laterally by 2.2 m:
+    # - L2 width 2.5 m -> combined half-width 2.5 m > 2.2 m -> overlap (collision).
+    # - L3 width 2.0 m -> combined half-width 2.0 m < 2.2 m -> no overlap.
+    ego = np.array([[10.0, 0.0], [11.0, 0.0]])
+    agent = np.array([[10.0, 2.2], [11.0, 2.2]])
+    l2 = assess_risk(ego, agent, dt=0.1, ego_heading=0.0, agent_heading=0.0, vehicle_width=2.5)
+    l3 = assess_risk(ego, agent, dt=0.1, ego_heading=0.0, agent_heading=0.0, vehicle_width=2.0)
+    assert l2.conflict_step == 0 and np.isfinite(l2.ttc)
+    assert l3.conflict_step is None and np.isinf(l3.ttc)
+
+    # Swept mode respects ctx.vehicle_width=2.0 on PredictiveAssessor
+    ctx_l2 = context(ego_v=10.0, horizon=5, dt=0.1)
+    ctx_l2.r_safe = None
+    ctx_l2.ego_future_heading = np.zeros(5)
+    ctx_l2.vehicle_width = 2.5
+
+    ctx_l3 = context(ego_v=10.0, horizon=5, dt=0.1)
+    ctx_l3.r_safe = None
+    ctx_l3.ego_future_heading = np.zeros(5)
+    ctx_l3.vehicle_width = 2.0
+
+    parallel = history(x=5.0, y=2.2, vx=5.0, vy=0.0)
+    assessor = PredictiveAssessor(ConstantVelocityPredictor())
+    assert np.isfinite(assessor.assess(ctx_l2, parallel).ttc)
+    assert np.isinf(assessor.assess(ctx_l3, parallel).ttc)
+
+
+def test_reactive_assessor_reads_ctx_vehicle_dimensions():
+    ctx_narrow = context(ego_v=10.0)
+    ctx_narrow.r_safe = None
+    ctx_narrow.vehicle_length = 4.0
+    ctx_narrow.vehicle_width = 2.0
+
+    ctx_wide = context(ego_v=10.0)
+    ctx_wide.r_safe = None
+    ctx_wide.vehicle_length = 5.0
+    ctx_wide.vehicle_width = 2.5
+
+    # Agent rotated 90 deg ahead in ego lane so its lateral extent uses vehicle_width/2.
+    h = Trajectory(
+        np.array([-0.1, 0.0]),
+        np.array([20.0, 20.0]),
+        np.array([0.0, 0.0]),
+        np.array([0.0, 0.0]),
+        np.array([np.pi / 2, np.pi / 2]),
+    )
+    r_narrow = ReactiveAssessor().assess(ctx_narrow, h)
+    r_wide = ReactiveAssessor().assess(ctx_wide, h)
+    assert r_narrow.ttc == pytest.approx((20.0 - (2.0 + 1.0)) / 10.0)
+    assert r_wide.ttc == pytest.approx((20.0 - (2.5 + 1.25)) / 10.0)
+
+
+def test_uncertainty_aware_swept_ttc_inflation_cap_and_delay():
+    class _FixedStdPredictor(ConstantVelocityPredictor):
+        def __init__(self, std_lon: float, std_lat: float):
+            self._std = (std_lon, std_lat)
+            self.latest_std = None
+
+        def predict(self, hist: Trajectory, horizon: int, dt: float) -> np.ndarray:
+            out = super().predict(hist, horizon, dt)
+            self.latest_std = np.tile(self._std, (horizon, 1))
+            return out
+
+    # Parallel car at y=2.4 m with L3 width 2.0 m: clearance is 0.4 m per side.
+    # - kappa=0.0 -> no overlap (TTC=inf)
+    # - kappa=1.0 with sigma_lat=0.5 m -> single-side inflation 0.5 m > 0.4 m -> finite TTC!
+    ctx = context(ego_v=10.0, horizon=10, dt=0.1)
+    ctx.r_safe = None
+    ctx.ego_future_heading = np.zeros(10)
+    ctx.vehicle_width = 2.0
+    h = history(x=5.0, y=2.4, vx=5.0, vy=0.0)
+
+    r0 = PredictiveAssessor(_FixedStdPredictor(0.2, 0.5), uncertainty_scale=0.0).assess(ctx, h)
+    r1 = PredictiveAssessor(_FixedStdPredictor(0.2, 0.5), uncertainty_scale=1.0).assess(ctx, h)
+    assert np.isinf(r0.ttc)
+    assert np.isfinite(r1.ttc)
+    assert r1.ttc <= r0.ttc
+
+    # Single-side inflation must be capped at 1.5 m (total agent_width <= 2.0 + 3.0 = 5.0 m ->
+    # combined half-width = 1.0 + 2.5 = 3.5 m, so y=3.6 m stays collision-free even for huge sigma).
+    h_far = history(x=5.0, y=3.6, vx=5.0, vy=0.0)
+    r_capped = PredictiveAssessor(_FixedStdPredictor(10.0, 10.0), uncertainty_scale=2.0).assess(
+        ctx, h_far
+    )
+    assert np.isinf(r_capped.ttc)
+
+    # Delayed observation aligns latest_std without shape error
+    ctx_delayed = context(ego_v=10.0, horizon=10, dt=0.1, t_now=0.25)
+    ctx_delayed.r_safe = None
+    ctx_delayed.ego_future_heading = np.zeros(10)
+    ctx_delayed.vehicle_width = 2.0
+    h_old = history(x=3.75, y=2.4, vx=5.0, vy=0.0, t_last=0.0)
+    r_del = PredictiveAssessor(_FixedStdPredictor(0.2, 0.5), uncertainty_scale=1.0).assess(
+        ctx_delayed, h_old
+    )
+    assert np.isfinite(r_del.ttc)
+
+
+def test_assess_risk_padding_pedestrian_circle_and_validation():
+    # Pedestrian padding inflates effective disk radius
+    ego = np.array([[0.0, 0.0], [1.0, 0.0]])
+    # Ego half-width=1.0, pedestrian radius=1.25 -> edge at y=2.25;
+    # y=2.5 misses without pad, hits with pad=1.0.
+    ped = np.array([[0.0, 2.5], [1.0, 2.5]])
+    r_no_pad = assess_risk(
+        ego, ped, dt=0.1, ego_heading=0.0, agent_heading=0.0, pedestrian=True, vehicle_width=2.0
+    )
+    r_pad = assess_risk(
+        ego,
+        ped,
+        dt=0.1,
+        ego_heading=0.0,
+        agent_heading=0.0,
+        pedestrian=True,
+        vehicle_width=2.0,
+        agent_width_pad=1.0,
+    )
+    assert np.isinf(r_no_pad.ttc) and r_pad.conflict_step == 0
+
+    # Validation rejects negative / NaN / wrong-shape pads and invalid uncertainty_scale
+    with pytest.raises(ValueError, match="agent_length_pad"):
+        assess_risk(ego, ped, dt=0.1, agent_length_pad=-0.1)
+    with pytest.raises(ValueError, match="agent_width_pad"):
+        assess_risk(ego, ped, dt=0.1, agent_width_pad=np.array([0.1, 0.2, 0.3]))
+    with pytest.raises(ValueError, match="vehicle_width"):
+        assess_risk(ego, ped, dt=0.1, vehicle_width=0.0)
+    with pytest.raises(ValueError, match="vehicle_width"):
+        assess_risk(ego, ped, dt=0.1, vehicle_width=np.bool_(True))
+    with pytest.raises(ValueError, match="uncertainty_scale"):
+        PredictiveAssessor(ConstantVelocityPredictor(), uncertainty_scale=-0.5)
+    with pytest.raises(ValueError, match="uncertainty_scale"):
+        PredictiveAssessor(ConstantVelocityPredictor(), uncertainty_scale=np.bool_(True))
+    ctx_none_w = context(ego_v=10.0)
+    ctx_none_w.vehicle_width = None
+    with pytest.raises(ValueError, match="Vehicle dimensions"):
+        ReactiveAssessor().assess(ctx_none_w, history())
