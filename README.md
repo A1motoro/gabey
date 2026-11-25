@@ -195,6 +195,10 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
   不入 git；仓库内 `tests/fixtures/` 的 12 个真实 NPZ 快照可独立复现，不需要 TensorFlow 或原始分片。
   nuScenes 的历史 loader 占位接口保留兼容。
 
+课程 toy CSV 不入 git；缺少这些文件时，两项外部数据集成测试会明确跳过。
+自包含 CSV 单元测试和真实 NPZ 测试仍然运行。`[womd]` 额外依赖只用于原始读取/CRC 测试。
+实际测试计数与环境说明见 [当前状态](docs/status.md)。
+
 ### A 的 L3 真实数据交付
 
 ```powershell

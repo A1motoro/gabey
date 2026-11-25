@@ -134,9 +134,7 @@ def test_cut_in_rejects_physics_beyond_the_lateral_acceleration_bound():
     with pytest.raises(ValueError, match="peak lateral acceleration"):
         make_scenario("cut_in", gap_d=25.0, rel_v=2.0, cut_in_t=0.5, lc_T=1.5)
     # the same lane change is fine once the bound is relaxed explicitly
-    sc = make_scenario(
-        "cut_in", gap_d=25.0, rel_v=2.0, cut_in_t=0.5, lc_T=2.0, max_lat_acc=6.0
-    )
+    sc = make_scenario("cut_in", gap_d=25.0, rel_v=2.0, cut_in_t=0.5, lc_T=2.0, max_lat_acc=6.0)
     assert sc.params["peak_lat_acc"] > 3.0
 
 
@@ -224,8 +222,40 @@ def test_canonical_lookup_fails_loudly():
 # --------------------------------------------------------------------------------------
 # toy data loader
 # --------------------------------------------------------------------------------------
-def test_load_toy_excludes_ego_and_uses_the_file_stem_as_id():
-    agents = load_toy()
+@pytest.fixture
+def course_toy_dir():
+    """Optional external course clip; missing files are not a loader regression."""
+    from pbs.data.loader import SAMPLE_DIR, _resolve_dir
+
+    try:
+        return _resolve_dir(SAMPLE_DIR)
+    except FileNotFoundError:
+        pytest.skip("Optional course toy CSVs absent; copy them to data/sample_trajectories/")
+
+
+def test_toy_loader_contract_without_external_course_files(tmp_path):
+    """Synthetic CSV unit fixture, independent of downloaded evidence datasets."""
+    header = "timestamp,x,y,heading,velocity,acceleration,agent_type\n"
+    samples = {
+        "ego_trajectory": "0,0,0,0,15,0,ego\n0.1,1.5,0,0,15,0,ego\n",
+        "agent_trajectory_001": "0,5,1,0,10,0,vehicle\n0.1,6,1,0,10,0,vehicle\n",
+        "agent_trajectory_002": "0,10,-1,0,12,0,vehicle\n0.1,11.2,-1,0,12,0,vehicle\n",
+    }
+    for name, rows in samples.items():
+        (tmp_path / f"{name}.csv").write_text(header + rows, encoding="utf-8")
+    agents = load_toy(tmp_path)
+    assert [a.agent_id for a in agents] == ["agent_trajectory_001", "agent_trajectory_002"]
+    assert all(a.agent_type == "vehicle" and a.accel is None for a in agents)
+    np.testing.assert_allclose(agents[0].t, [0, 0.1])
+    np.testing.assert_allclose(agents[0].x, [5, 6])
+    np.testing.assert_allclose(agents[1].x, [10, 11.2])
+    ego = load_toy_ego(tmp_path)
+    assert ego.agent_id == "ego_trajectory" and ego.agent_type == "ego"
+    np.testing.assert_allclose(ego.x, [0, 1.5])
+
+
+def test_load_toy_excludes_ego_and_uses_the_file_stem_as_id(course_toy_dir):
+    agents = load_toy(course_toy_dir)
     assert len(agents) == 2
     assert [a.agent_id for a in agents] == ["agent_trajectory_001", "agent_trajectory_002"]
     assert all(a.agent_type != "ego" for a in agents)
@@ -237,8 +267,8 @@ def test_load_toy_excludes_ego_and_uses_the_file_stem_as_id():
         assert len(agent.t) == 130
 
 
-def test_load_toy_ego_returns_the_ego_clip():
-    ego = load_toy_ego()
+def test_load_toy_ego_returns_the_ego_clip(course_toy_dir):
+    ego = load_toy_ego(course_toy_dir)
     assert ego is not None
     assert ego.agent_type == "ego"
     assert ego.agent_id == "ego_trajectory"
@@ -313,12 +343,7 @@ def test_cut_in_longitudinal_acceleration_ramps_inside_the_merge_window():
     assert agent.v[k_after] == pytest.approx(v0 + a * window)
 
     t_end = 5.0  # after both the ramp and the lane change, so v = v_x
-    x_expected = (
-        25.0
-        + v0 * t_end
-        + 0.5 * a * window**2
-        + a * window * (t_end - t0 - window)
-    )
+    x_expected = 25.0 + v0 * t_end + 0.5 * a * window**2 + a * window * (t_end - t0 - window)
     assert agent.x[int(round(t_end / DT))] == pytest.approx(x_expected, abs=1e-9)
     assert agent.v[int(round(t_end / DT))] == pytest.approx(v0 + a * window)
 
