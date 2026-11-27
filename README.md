@@ -89,6 +89,17 @@ python experiments/exp01_predictor_ade.py --include-lr
 L3 的五模型同切片结果输出至 `outputs/figures/l3-predictors/`；原 exp01 默认四模型入口保留。
 验证与模型限制见 [docs/l3-validation.md](docs/l3-validation.md)。
 
+### 可选扩展：2D 激光雷达感知
+
+```powershell
+python experiments/exp08_lidar_perception.py --open
+```
+
+实时射线扫描 → 点云聚类 → L-Shape 框拟合 → 卡尔曼多目标跟踪，再接入原有预测和刹车。
+演示可切换遮挡场景、拖动时间，对照真值车身、扫描点和跟踪轨迹；无需原始 Waymo 点云、服务器或额外依赖。
+新手解释、复现、实测结果和限制见 [2D 激光雷达说明](docs/2d_lidar_guide.md)。
+该扩展独立于队友的防后车追尾模块。
+
 ## 目录结构
 
 ```
@@ -96,6 +107,7 @@ src/pbs/
   types.py        Trajectory / Scenario / SimLog（W4 冻结）
   data/           M1  load_toy, make_scenario（三类参数化场景 + quintic 换道）
   prediction/     M2  CV / CA / CTRV / LR / Oracle predictors
+  perception/     可选 2D LiDAR：射线点云 / 聚类 / L-Shape / KF 跟踪
   risk/           TTC: assess_risk, Reactive / Predictive assessors
   sim/            M3  run_sim, ego rollout, footprint, policy, latency
   eval/           M4  counterfactual, metrics, experiment matrix, plots
@@ -163,7 +175,7 @@ A 的 M1 场景基线：运行 `python experiments/exp00_scenarios.py` 后，`ou
 
 - 点质量运动 + 随航向旋转的矩形车身（长 5.0 m、宽 2.5 m），无车辆动力学；仅纵向控制，无 steering。
 - 主网格为合成构造（quintic 换道 + 横向加速度上限）；L3 真实回放为少量选定窗口，非真实交通分布。
-- 无 perception：直接使用轨迹级数据。
+- 默认使用轨迹级观测；可选白盒 2D LiDAR 感知使用仿真扫描点云，尚未接入真实传感器。
 - 2D 简化。
 
 ## 交付与日程

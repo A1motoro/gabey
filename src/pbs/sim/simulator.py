@@ -5,10 +5,14 @@ Per step (dt = 0.1 s): observe (with latency) → ego rollout → assess each ag
 Ego is simulated (reacts to braking); agents are log-replayed (do not react).
 """
 
+from collections import deque
+
 import numpy as np
 
+from pbs.perception import LidarBody, PerceptionPipeline
 from pbs.risk.assessors import RiskAssessor
 from pbs.sim.collision import (
+    PEDESTRIAN_RADIUS,
     VEHICLE_LENGTH,
     VEHICLE_WIDTH,
     in_collision,
@@ -36,7 +40,17 @@ def advance_motion(v: float, a_brake: float, dt: float, action: str) -> tuple[fl
     return v * h - 0.5 * a_brake * h * h, max(0.0, v - a_brake * h)
 
 
-def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brake):
+def _validate(
+    scenario,
+    duration,
+    horizon,
+    r_safe,
+    latency,
+    collision_dt,
+    a_brake,
+    *,
+    require_prehistory=True,
+):
     """Reject inputs that would otherwise silently clamp paths or replay endpoints."""
     dt = scenario.dt
     values = (dt, duration, latency, collision_dt, a_brake, scenario.lane_width)
@@ -80,9 +94,10 @@ def _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brak
         if not agent.agent_id or agent.agent_id in ids:
             raise ValueError("Each agent must have a unique nonempty agent_id.")
         ids.add(agent.agent_id)
-        if agent.t[0] > -latency + 1e-9:
+        required_start = -latency if require_prehistory else 0.0
+        if agent.t[0] > required_start + 1e-9:
             raise MissingObservationError(
-                f"Agent {agent.agent_id!r}: provide history at or before {-latency:g} s."
+                f"Agent {agent.agent_id!r}: provide history at or before {required_start:g} s."
             )
         if agent.t[-1] < duration - 1e-9:
             raise ValueError(f"Agent {agent.agent_id!r}: truth must cover duration={duration}.")
@@ -109,6 +124,7 @@ def run_sim(
     *,
     observation_model: ObservationModel | None = None,
     computation_delay_model: ComputationDelayModel | None = None,
+    perception_model: PerceptionPipeline | None = None,
 ) -> SimLog:
     """Run one independent experiment using A's Scenario and P's RiskAssessor.
 
@@ -118,10 +134,36 @@ def run_sim(
     Collision sweeps use <= collision_dt linear subintervals (an approximation
     for acceleration), also split at stopping times, path corners and truth knots.
     A collision is recorded permanently; this model does not simulate impacts.
+    Optional perception scans from the actual closed-loop ego pose, starting at
+    t=0. Its histories use sensor-created IDs; unseen targets are not assessed.
+    latency delays stored scans (including their original ego viewpoint), rather
+    than rendering old truth from the current pose. Truth collision checks remain
+    independent of detection. Oracle cannot consume these unlabelled tracks.
     """
+    if perception_model is not None and observation_model is not None:
+        raise ValueError("Choose either perception_model or observation_model, not both.")
+    if (
+        perception_model is not None
+        and getattr(getattr(assessor, "predictor", None), "name", "") == "oracle"
+    ):
+        raise ValueError(
+            "Oracle requires truth agent IDs and cannot assess unlabelled LiDAR tracks."
+        )
     dt = scenario.dt
     a_brake = getattr(policy, "a_brake", DEFAULT_A_BRAKE)
-    steps, path = _validate(scenario, duration, horizon, r_safe, latency, collision_dt, a_brake)
+    steps, path = _validate(
+        scenario,
+        duration,
+        horizon,
+        r_safe,
+        latency,
+        collision_dt,
+        a_brake,
+        require_prehistory=perception_model is None,
+    )
+    scan_queue = deque()
+    if perception_model is not None:
+        perception_model.reset()
     n = steps + 1
     t = np.arange(n) * dt
     reset = getattr(policy, "reset", None)
@@ -180,6 +222,8 @@ def run_sim(
             r_safe=r_safe,
             ego_future_heading=headings_at(s + v * dt * np.arange(1, horizon + 1)),
         )
+        histories = []
+        bodies = []
         for agent in scenario.agents:
             true_xy = state_at(agent, t[k])
             min_dist = min(min_dist, float(np.linalg.norm(ego_xy - true_xy)))
@@ -194,6 +238,15 @@ def run_sim(
             collision |= overlap
             if overlap and first_collision_t is None:
                 first_collision_t = float(t[k])
+            if perception_model is not None:
+                bodies.append(
+                    LidarBody(
+                        center=true_xy,
+                        heading=float(np.interp(t[k], agent.t, agent_angles[agent.agent_id])),
+                        radius=PEDESTRIAN_RADIUS if agent.agent_type == "pedestrian" else None,
+                    )
+                )
+                continue
             history = history_until(agent, t[k] - latency)
             if not len(history.t):
                 raise MissingObservationError(f"No observable history for {agent.agent_id!r}.")
@@ -202,10 +255,24 @@ def run_sim(
                 history = observation_model.observe(history, t_now=float(t[k]))
                 if history.agent_id != agent.agent_id or not np.array_equal(history.t, reference_t):
                     raise ValueError("Observation model must preserve agent ID and timestamps.")
+            histories.append(history)
+        if perception_model is not None:
+            scans = perception_model.observe(
+                t_now=float(t[k]),
+                ego_xy=ego_xy,
+                ego_heading=ctx.ego_heading,
+                current_agent_states=bodies,
+            )
+            scan_queue.append((float(t[k]), scans))
+            cutoff = float(t[k] - latency + 1e-9)
+            while len(scan_queue) > 1 and scan_queue[1][0] <= cutoff:
+                scan_queue.popleft()
+            histories = scan_queue[0][1] if scan_queue[0][0] <= cutoff else []
+        for history in histories:
             est = assessor.assess(ctx, history)
             if est.considered:
                 if np.isnan(est.ttc) or est.ttc < 0:
-                    raise ValueError(f"Invalid TTC from assessor for {agent.agent_id!r}.")
+                    raise ValueError(f"Invalid TTC from assessor for {history.agent_id!r}.")
                 ttc[k] = min(ttc[k], est.ttc)
 
         if first_collision_t is None or first_collision_t == t[k]:
