@@ -142,3 +142,20 @@ policy.decide(ttc) → brake / cruise
 - A 需提供延迟所需预历史；P 定义其最小历史长度，并将预测对齐到 ctx.t_now+(k+1)*dt。
   原 Predictor 接口以最后观测为基准，非零延迟的时间对齐仍由 P 完成。
 - 记录碰撞后继续到指定时长，collision 永久保留 True；不模拟碰撞冲击。
+
+## 可选 2D LiDAR 感知接口（2026-11-27）
+
+`run_sim(..., *, perception_model: PerceptionPipeline | None = None)` 是可选扩展，
+不修改 `Trajectory` / `Scenario` / `SimLog` 字段和既有默认行为。
+
+- 每个运行开始重置感知器。传入每步实际自车位姿与当前周车 footprint；只有射线传感器读取 footprint。
+- 聚类、L-Shape 拟合与 KF 跟踪只接收无标签点云 / 检测框，输出自己的 `lidar_*` 轨迹 ID。
+- 轨迹默认至少两次实际检出才确认；单次检出不能提供运动速度。已有航迹最多外推 3 个丢失扫描，再删除。
+- 全盲区、尚未建轨的目标不评估；真值碰撞仍逐步检查，不能把未检出当成没有碰撞。
+- `latency` 延迟交付保存的扫描结果，自车位姿保持扫描时视角；启动暂无交付结果时允许空目标列表。
+  此模式只要求真值覆盖 `[0, duration]`，不借用真值预历史初始化感知。原轨迹模式仍要求延迟预历史。
+- `observation_model` 与 `perception_model` 同时传入时报错；Oracle 的真值 ID 接口与无标签轨迹不兼容，明确报错。
+- 轨迹的 `accel=None`；检测尺寸与位置协方差保存在独立诊断帧，风险端仍使用原固定车身。
+  感知协方差不自动加入 P 的 NN 预测不确定度。语义分类未实现，风险端按通用车辆处理。
+
+入口、复现及限制见 [2D LiDAR 新手说明](2d_lidar_guide.md)。

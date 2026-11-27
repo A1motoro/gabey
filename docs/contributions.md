@@ -13,3 +13,5 @@
 | W12（11-23） | | | L3 Waymo：8 分片 / 2321 记录的 CRC 核验与筛选；`womd.py`、loader、官方 descriptor；5+5 首批和 2 个说明快照；40 切入窗口全审计；`exp07_real_clip.py` 三图 + CSV；真实危险案例 CV 提前 0.3 s、误刹案例如实披露；NPZ 无原始数据依赖测试；`L3_waymo_case_study.md` 与 `L3_A_handoff.md` | |
 
 2026-11-24，A：PR #16 评审后续修复——旧状态快照移至明确归档；外部课程数据缺失的测试明确 skip；新增无下载依赖的 CSV loader 单元测试；验证有数据环境 408 passed、干净克隆 406 passed / 2 skipped，并同步验收前提。
+
+2026-11-27，2D LiDAR 扩展（本次用户负责）：新增 `pbs.perception` 的射线扫描、欧氏聚类、L-Shape 最小方差框拟合、多目标 KF 跟踪；为 `run_sim` 添加可选感知入口，保留真值碰撞与默认轨迹模式；新增双车遮挡场景、exp08 真值 / 雷达对照、可拖动的自包含网页、CSV / JSON / 俯视图及中文说明。没有修改队友 `feat/ext-rear-end-safety` 的防追尾实现；不计为用户完成了队友工作。自动验证与人工复核边界见 AI 使用记录。

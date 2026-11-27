@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2D 激光雷达 · 从点到轨迹</title>
+<style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#233346;background:#f2f5f8}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0}main{max-width:1180px;margin:auto;padding:30px 24px}
+h1{margin:6px 0 10px;font-size:30px;letter-spacing:-.5px}p{line-height:1.75;margin:8px 0;color:#607087}
+.eyebrow{font-size:12px;color:#087c78;letter-spacing:2px;font-weight:700}
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:20px 0}
+select,button{font:inherit;border:1px solid #d3dce5;border-radius:9px;padding:10px 14px;background:white;color:#233346}
+button{cursor:pointer;background:#087c78;color:white;border-color:#087c78;min-width:82px}
+label{font-size:14px}input[type=range]{accent-color:#087c78;flex:1;min-width:170px}
+.card{background:white;border:1px solid #dce3ea;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px #23334608}
+canvas{display:block;width:100%;height:380px;background:#fbfcfd}
+.legend{display:flex;gap:18px;flex-wrap:wrap;padding:15px 20px;border-top:1px solid #e6ebef;font-size:13px;color:#607087}
+.legend span:before{content:"";display:inline-block;width:9px;height:9px;background:var(--c);border-radius:50%;margin-right:7px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin:20px 0}
+.stat{background:white;border:1px solid #dce3ea;border-radius:12px;padding:15px}.stat small{color:#607087;display:block;font-size:12px}.stat strong{display:block;font-size:23px;margin-top:6px}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:26px}.steps b{display:block;font-size:15px}.steps p{font-size:13px}
+#comparison{font-size:14px;background:#e6f2f0;border-radius:10px;padding:13px 17px;color:#245a56}
+footer{font-size:12px;line-height:1.8;color:#758396;margin-top:24px}
+@media(max-width:750px){main{padding:20px 14px}h1{font-size:24px}.stats{grid-template-columns:repeat(2,1fr)}.steps{grid-template-columns:repeat(2,1fr)}canvas{height:320px}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">GABEY / PERCEPTION</div>
+<h1>2D 激光雷达：从点到轨迹</h1>
+<p>把自车想成拿着一圈测距手电筒。光束撞到车身就留下一个点；被前面的车挡住，就看不到后面的车。</p>
+<div class="toolbar">
+<select id="scene" aria-label="场景"></select><select id="system" aria-label="预测系统"></select>
+<button id="play">播放</button><input id="time" type="range" min="0" value="0" step="1" aria-label="仿真时间">
+<label><input type="checkbox" id="truth" checked> 显示真实车身</label>
+<label><input type="checkbox" id="rays" checked> 显示激光束</label>
+</div>
+<div class="card"><canvas id="view" aria-label="激光点云、检测框和轨迹俯视图"></canvas>
+<div class="legend"><span style="--c:#3875cb">自车</span><span style="--c:#697787">真实车身（仅供对照）</span><span style="--c:#089a96">激光反射点</span><span style="--c:#dc7b21">点云拟合框</span><span style="--c:#8c49bd">跟踪位置与历史</span></div></div>
+<div class="stats"><div class="stat"><small>当前时间</small><strong id="clock"></strong></div>
+<div class="stat"><small>反射点 / 跟踪目标</small><strong id="count"></strong></div>
+<div class="stat"><small>自车速度</small><strong id="speed"></strong></div>
+<div class="stat"><small>预计多久会碰撞 TTC</small><strong id="ttc"></strong></div>
+<div class="stat"><small>当前动作</small><strong id="action"></strong></div></div>
+<div id="comparison"></div>
+<div class="steps"><div><b>① 测距，得到点</b><p>一束光只记最近一次碰到的车身。距离远时，车占的角度小，扫到的点自然更少。</p></div>
+<div><b>② 把附近的点分组</b><p>靠得近的点归成一组，作为一个候选目标。此时没有车辆名字，也不知道真实速度。</p></div>
+<div><b>③ 用矩形框住点</b><p>旋转矩形，让这组点尽量贴着框的边缘。只看到半边车时，估计的中心位置就会偏。</p></div>
+<div><b>④ 连续跟踪，再预测</b><p>把这一帧和上一帧的目标对应起来，平滑位置并估计速度。形成轨迹后，原有系统再判断是否刹车。</p></div></div>
+<footer>这是平面几何仿真的激光雷达。Waymo 案例也是根据车辆轨迹重建扫描，没有使用真实激光雷达原始点云。全盲区目标不会凭空生成；短暂丢失的已有目标最多保留 3 帧。紫色轨迹是感知结果，灰色车身不会交给预测器。结果只说明这些案例，不能代表真实交通中的总体安全收益。</footer>
+</main>
+<script>
+const data=(()=>{try{return __LIDAR_DATA__;}catch(error){if(error instanceof ReferenceError)return null;throw error;}})();
+if(data){
+const el=id=>document.getElementById(id), canvas=el('view'), ctx=canvas.getContext('2d');
+const names={reactive:'Reactive · 本车道反应',cv:'CV · 匀速预测',ca:'CA · 加速度预测',ctrv:'CTRV · 转向预测',lr:'LR · 平滑预测',nn:'NN · 神经网络',nn_ua:'NN-UA · 不确定度预测'};
+let timer=null, frames=[], selected=null;
+for(const [key,run] of Object.entries(data.runs)){const o=document.createElement('option');o.value=key;o.textContent=run.label;el('scene').append(o)}
+function stop(){if(timer!==null)clearInterval(timer);timer=null;el('play').textContent='播放'}
+function setScene(){stop();el('system').replaceChildren();const run=data.runs[el('scene').value];for(const key of Object.keys(run.systems)){const o=document.createElement('option');o.value=key;o.textContent=names[key]||key;el('system').append(o)}if(run.systems.cv)el('system').value='cv';setSystem()}
+function setSystem(){stop();selected=data.runs[el('scene').value].systems[el('system').value];frames=selected.frames;el('time').max=frames.length-1;el('time').value=0;draw()}
+function result(s){return s.collision?'发生碰撞':'未发生碰撞'}
+function brake(s){return s.first_brake_t===null?'没有刹车':s.first_brake_t.toFixed(1)+' 秒开始刹车'}
+function draw(){
+ const f=frames[Number(el('time').value)];if(!f)return;
+ const ratio=window.devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight;
+ canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,w,h);
+ const scale=(w-70)/65,ox=65+10*scale,oy=h*.64, origin=f.ego.xy;
+ const xy=p=>[ox+(p[0]-origin[0])*scale,oy-(p[1]-origin[1])*scale];
+ function line(a,b,color,width=1,dash=[]){ctx.beginPath();ctx.setLineDash(dash);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();ctx.setLineDash([])}
+ function rect(center,l,b,heading,color,fill=false,dash=[]){const c=Math.cos(heading),s=Math.sin(heading);const pts=[[-l/2,-b/2],[l/2,-b/2],[l/2,b/2],[-l/2,b/2]].map(([x,y])=>xy([center[0]+c*x-s*y,center[1]+s*x+c*y]));ctx.beginPath();ctx.moveTo(...pts[0]);pts.slice(1).forEach(p=>ctx.lineTo(...p));ctx.closePath();ctx.setLineDash(dash);ctx.strokeStyle=color;ctx.lineWidth=1.7;if(fill){ctx.fillStyle=fill;ctx.fill()}ctx.stroke();ctx.setLineDash([])}
+ for(const y of [-5.25,-1.75,1.75,5.25,8.75]){const yy=xy([origin[0],y])[1];line([0,yy],[w,yy],'#d8dfe7',1,[8,8])}
+ for(let x=0;x<=50;x+=10){const p=xy([origin[0]+x,origin[1]]);ctx.fillStyle='#99a6b3';ctx.font='11px system-ui';ctx.fillText(x+'m',p[0]-8,h-15);line([p[0],h-28],[p[0],h-23],'#cad3dd')}
+ if(el('rays').checked)f.points.forEach((p,i)=>{if(i%2===0)line(xy(origin),xy(p),'#089a961c',.7)});
+ if(el('truth').checked)for(const b of f.truth){rect(b.center,5,2.5,b.heading,'#7c8998','#e8edf2',[4,3]);const p=xy(b.center);ctx.fillStyle='#6e7d8e';ctx.font='11px system-ui';ctx.fillText(b.id,p[0]-15,p[1]-24)}
+ rect(origin,5,2.5,f.ego.heading,'#3875cb','#3875cb');const egoP=xy(origin);ctx.fillStyle='white';ctx.font='bold 12px system-ui';ctx.fillText('EGO',egoP[0]-12,egoP[1]+4);
+ for(const b of f.detections)rect(b.center,b.length,b.width,b.heading,'#dc7b21');
+ ctx.fillStyle='#089a96';for(const p of f.points){const q=xy(p);ctx.beginPath();ctx.arc(...q,2.4,0,Math.PI*2);ctx.fill()}
+ for(const tr of f.tracks){const trail=tr.trail.map(xy);for(let i=1;i<trail.length;i++)line(trail[i-1],trail[i],'#8c49bd88',1.5);const p=trail[trail.length-1];ctx.beginPath();ctx.arc(...p,4,0,Math.PI*2);ctx.fillStyle=tr.observed?'#8c49bd':'#bfa5d0';ctx.fill();ctx.font='11px system-ui';ctx.fillText(tr.id+(tr.observed?'':'（暂时丢失）'),p[0]+6,p[1]+15)}
+ el('clock').textContent=f.t.toFixed(1)+' s';el('count').textContent=f.points.length+' / '+f.tracks.length;el('speed').textContent=f.ego.v.toFixed(1)+' m/s';el('ttc').textContent=f.ttc===null?'暂无冲突':f.ttc.toFixed(2)+' s';el('action').textContent=f.action==='brake'?'刹车':'巡航';
+ el('action').style.color=f.action==='brake'?'#c96422':'#087c78';
+ el('comparison').textContent='本次完整运行：使用雷达 '+brake(selected.summary)+'，'+result(selected.summary)+'。同一系统直接读真值时：'+brake(selected.truth_summary)+'，'+result(selected.truth_summary)+'。';
+}
+el('scene').addEventListener('change',setScene);el('system').addEventListener('change',setSystem);
+el('time').addEventListener('input',()=>{stop();draw()});el('truth').addEventListener('change',draw);el('rays').addEventListener('change',draw);
+el('play').addEventListener('click',()=>{if(timer!==null){stop();return}if(Number(el('time').value)>=frames.length-1)el('time').value=0;el('play').textContent='暂停';timer=setInterval(()=>{const i=Number(el('time').value)+1;if(i>=frames.length){stop();return}el('time').value=i;draw()},100)});
+window.addEventListener('resize',draw);setScene();
+if(window.location.hash==='#play')el('play').click();
+}else{
+ const target=new URL('../outputs/figures/lidar-perception/lidar_demo.html#play',window.location.href);
+ document.querySelector('.card').hidden=true;
+ document.querySelector('.stats').hidden=true;
+ for(const id of ['scene','system','time'])document.getElementById(id).hidden=true;
+ for(const id of ['truth','rays'])document.getElementById(id).parentElement.hidden=true;
+ document.getElementById('comparison').innerHTML='点击“播放”打开已生成的雷达演示。<a href="../outputs/figures/lidar-perception/lidar_demo.html#play">也可以点击这里打开</a>。<br>如果还没有演示文件，在仓库目录运行：<code>python experiments/exp08_lidar_perception.py --open</code>';
+ document.getElementById('play').addEventListener('click',()=>window.location.assign(target.href));
+}
+</script></body></html>
